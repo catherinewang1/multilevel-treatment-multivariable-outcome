@@ -4,6 +4,10 @@
 # saved plots
 /plots/
 
+# notebook saved files
+/notebooks/shrinkEstimates_files/
+/notebooks/shrinkEstimates.log
+
 # History files
 .Rhistory
 .Rapp.history

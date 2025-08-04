@@ -2,7 +2,11 @@
 /saves/
 
 # saved plots
-/plots/
+plots/
+!plots/cellsamplesplit/clustering/clustering_all.png
+!plots/cellsamplesplit/clustering/cluster_probability.png
+!plots/cellsamplesplit/shrinkage/shrinkage_all.png
+!plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png 
 
 # notebook saved files
 /notebooks/shrinkEstimates_files/

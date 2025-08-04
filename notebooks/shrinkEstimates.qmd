@@ -326,9 +326,10 @@ method_nice_names = list('sceptre'='SCEPTRE',
                          'poisson'='Poisson',
                          'nb'     ='Negative Binomial')
 
-dir.create('../plots/clustering_and_shrinkage_cellsamplesplit')
-dir.create('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/')
-dir.create('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/')
+# wtf, path file is too long sometimes (windows 10)... keep names and paths shorter...
+dir.create('../plots/cellsamplesplit')
+dir.create('../plots/cellsamplesplit/clustering/')
+dir.create('../plots/cellsamplesplit/shrinkage/')
 ```
 
 ## Plot Clustering (hard)
@@ -358,17 +359,18 @@ for(est_method in names(ebci_results)) {
     clustering_plots[[paste0(est_method, '_', cl_method)]] = p_clusters + theme(legend.position = 'none')
     
     ggsave(plot     = p_clusters,
-           filename = sprintf('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/histogram_clustering_%s_%s.pdf', 
+           filename = sprintf('../plots/cellsamplesplit/clustering/clustering_%s_%s.pdf', 
                               est_method, cl_method), 
            height = 5, width = 5)
-    
-    
-    
   }
   
 }
 
-pdf('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/histogram_clustering_all.pdf', height = 10, width = 20)
+pdf('../plots/cellsamplesplit/clustering/clustering_all.pdf', height = 10, width = 20)
+gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
+dev.off()
+
+png('../plots/cellsamplesplit/clustering/clustering_all.png', res = 100, units = 'in', height = 10, width = 20)
 gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
 dev.off()
 
@@ -438,7 +440,7 @@ for(est_method in names(ebci_results)) {
 }
 
 
-pdf('../plots/clustering_and_shrinkage/clustering/cluster_probability.pdf', height = 6, width = 12)
+pdf('../plots/cellsamplesplit/clustering/cluster_probability.pdf', height = 6, width = 12)
 gridExtra::grid.arrange(grobs = clustering_prob_plots,  
                         # layout_matrix = matrix(c(1, 2, 3,
                         #                          4, 5, 6,
@@ -447,7 +449,14 @@ gridExtra::grid.arrange(grobs = clustering_prob_plots,
                         )
 dev.off()
 
-  
+png('../plots/cellsamplesplit/clustering/cluster_probability.png', res = 100, units = 'in', height = 6, width = 12)
+gridExtra::grid.arrange(grobs = clustering_prob_plots,  
+                        # layout_matrix = matrix(c(1, 2, 3,
+                        #                          4, 5, 6,
+                        #                          7, 8, 9), nrow=3)
+                        nrow=3
+                        )
+dev.off()
 
 ```
 
@@ -479,13 +488,18 @@ for(est_method in names(ebci_results)) {
     shrinkage_plots[[paste0(est_method, '_', cl_method)]] = p_shrinkage + theme(legend.position = 'none')
     
     ggsave(plot     = p_shrinkage,
-           filename = sprintf('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/shrinkage_%s_%s.pdf', est_method, cl_method), 
+           filename = sprintf('../plots/cellsamplesplit/shrinkage/shrinkage_%s_%s.pdf', est_method, cl_method), 
            height = 5, width = 10)
     }
 }
 
 
-pdf('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/shrinkage_all.pdf', height = 10, width = 20)
+pdf('../plots/cellsamplesplit/shrinkage/shrinkage_all.pdf', height = 10, width = 20)
+gridExtra::grid.arrange(grobs = shrinkage_plots, nrow = 3)
+dev.off()
+
+
+png('../plots/cellsamplesplit/shrinkage/shrinkage_all.png', res = 100, units = 'in', height = 10, width = 20)
 gridExtra::grid.arrange(grobs = shrinkage_plots, nrow = 3)
 dev.off()
 ```
@@ -498,7 +512,7 @@ dev.off()
 effects_list = list()
 for(est_method in c('sceptre', 'poisson', 'nb')) {
   effects_list[[est_method]] = list()
-  for(testsplit in c('train', 'test', 'all')) {
+  for(testsplit in c('test', 'all')) {
     if(est_method == 'sceptre') {path = 'sceptre/sceptre'} 
     else if(est_method == 'nb') {path = 'negativebinomial'}
     else {path = est_method}
@@ -607,8 +621,8 @@ ggplot(rejection_rates,
         plot.title = element_text(hjust = .5),
         plot.subtitle = element_text(hjust = .5))
 
-ggsave('../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.pdf', height = 5, width = 10)
-ggsave('../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.png', height = 5, width = 10)
+ggsave('../plots/cellsamplesplit/rejection_rates_tstat_shrinkage.pdf', height = 5, width = 10)
+ggsave('../plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png', height = 5, width = 10)
 
 ```
 

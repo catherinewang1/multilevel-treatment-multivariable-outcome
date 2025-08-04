@@ -3,7 +3,7 @@ analysis for scCRISPR screens with multilevel treatments and multivariable outco
 
 
 
-# `notebooks/shrinkEstimates.qmd` Notebook
+# Notebook: `notebooks/shrinkEstimates.qmd` 
 
 
 Notebook to analyze the cleary dataset with a combination of methods (SCEPTRE, Poisson, Negative Binomial) with clustering (kmeans and mixture modeling) and robust empirical bayes shrinkage.
@@ -65,5 +65,19 @@ EBCI Shrinkage on SCEPTRE + GLM (w/ kmeans and mixture model clustering)
 ## Plot Results
 
 
+### Plot Clustering
+
+![clustering](plots/cellsamplesplit/clustering/clustering_all.png "Clustering")
+
+### Plot Clustering (probabilities)
 
 
+![cluster probability](plots/cellsamplesplit/clustering/cluster_probability.png "Cluster Probability")
+
+### Plot Shrinkage
+
+![Shrinkage](plots/cellsamplesplit/shrinkage/shrinkage_all.png "Shrinkage")
+
+### Plot Rejection Rates
+
+![Rejection Rates](plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png "Rejection Rates")

@@ -615,11 +615,7 @@ ggsave('../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_
 
 
 
-![rejection_rates](./../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.pdf)
 
-
-
-![testing inserting image](./../plots/test.pdf)
 
 
 

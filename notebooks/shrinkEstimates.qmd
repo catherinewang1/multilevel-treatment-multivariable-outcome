@@ -1,0 +1,633 @@
+---
+title: "robustempiricalbayestest v2"
+format: html
+theme: sandstone
+editor: source
+execute:
+  echo: true
+  eval: false
+toc: true
+toc-depth: 2
+---
+
+# Introduction {#introduction}
+
+## description
+
+Notebook to analyze the cleary dataset with a combination of methods (SCEPTRE, Poisson, Negative Binomial) with clustering (kmeans and mixture modeling) and robust empirical bayes shrinkage.
+
+The structure of the analysis and notebook is:
+
+-   [Perform SCEPTRE w/ cell sample splitting](#sceptre)
+-   [Perform GLM (Poisson and Negative Binomial) w/ cell sample splitting](#glm)
+-   [Perform robust shrinkage (on estimates or tstat, not decided yet) after clustering (kmeans or mixture models)](#ebci)
+-   [Plot Results](#plots)
+
+This is a clean version of previous `robustempiricalbayestest.qmd`, which has more unnecessary code which is now stored in utils files. See the utils and/or previous version for more details.
+
+## some details
+
+-   uses the util code files:
+
+    -   `../utils/perform_sceptre_cleary.r` (get the original estimates)
+    -   `../utils/cluster_and_ebci_shrinkage.r` (perform shrinkage)
+
+-   saves plots in `../plots/`
+
+-   saves objects (rds objects, csv, sceptre object, etc...) in `../saves/`
+
+-   Each section should save the important objects, and then the following sections can just load the relevant objects. This is done so that each section can be run at different times because each section might take a while to run, and then it is easy to restart at any section.
+
+# SCEPTRE {#sceptre}
+
+SCEPTRE (w/ cell sample splitting)
+
+Main created objects to be saved are
+
+-   `../saves/sceptre/sceptre_obj_train.rds`
+-   `../saves/sceptre/sceptre_obj_test.rds`
+-   `../saves/sceptre/sceptre_obj_all.rds`
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+# devtools::install_github("katsevich-lab/sceptre")
+suppressPackageStartupMessages(library(sceptre))
+
+source('../utils/perform_sceptre_cleary.r')
+
+clearyrds = readRDS('../../genData/cleary/GSM6858447_KO_conventional.rds')
+```
+
+```{r}
+t0 = Sys.time() # ~ 21 mins
+
+# label each cell as part of training or testing dataset now
+set.seed(12345)
+cell_names = clearyrds[[]] |> rownames()
+N_cells = length(cell_names)
+cell_train = sample(cell_names, size = floor(N_cells / 2), replace = FALSE) |> sort()
+cell_test  = setdiff(cell_names, cell_train) |> sort()
+
+# create sceptre objects
+sceptre_obj_train = prepare_sceptre(seurat_obj = clearyrds, cell_subset = cell_train, seed = 12345)
+sceptre_obj_test  = prepare_sceptre(seurat_obj = clearyrds, cell_subset = cell_test , seed = 12345)
+sceptre_obj_all   = prepare_sceptre(seurat_obj = clearyrds, cell_subset = NULL      , seed = 12345)
+
+# grna_target_data_frame and response_names combined from train and test
+my_grna_target_data_frame = rbind(sceptre_obj_train$grna_target_data_frame,
+                                   sceptre_obj_test$grna_target_data_frame,
+                                    sceptre_obj_all$grna_target_data_frame) |> 
+                            distinct()
+my_response_names = unique(c(sceptre_obj_train$response_names,
+                              sceptre_obj_test$response_names,
+                               sceptre_obj_all$response_names))
+
+my_discovery_pairs = create_discovery_pairs(grna_target_data_frame = my_grna_target_data_frame, 
+                                           response_names = my_response_names,
+                                           NUM_GENES_PER_GRNA=15, NUM_GRNA=NULL,
+                                           seed = 12345)
+
+my_positive_control_pairs = construct_positive_control_pairs(sceptre_obj_train$sceptre_object)
+
+# perform sceptre 
+sceptre_obj_train$sceptre_object = 
+  perform_sceptre(sceptre_object = sceptre_obj_train$sceptre_object, 
+                discovery_pairs = my_discovery_pairs,
+                positive_control_pairs = my_positive_control_pairs,
+                save_dir_name = '../saves/sceptre/trainsplit',
+                save_obj_name = '../saves/sceptre/sceptre_object_train.rds' )
+
+
+sceptre_obj_test$sceptre_object = 
+  perform_sceptre(sceptre_object = sceptre_obj_test$sceptre_object, 
+                discovery_pairs = my_discovery_pairs,
+                positive_control_pairs = my_positive_control_pairs,
+                save_dir_name = '../saves/sceptre/testsplit',
+                save_obj_name = '../saves/sceptre/sceptre_object_test.rds' )
+
+sceptre_obj_all$sceptre_object = 
+  perform_sceptre(sceptre_object = sceptre_obj_all$sceptre_object, 
+                discovery_pairs = my_discovery_pairs,
+                positive_control_pairs = my_positive_control_pairs,
+                save_dir_name = '../saves/sceptre/nosplit',
+                save_obj_name = '../saves/sceptre/sceptre_object_all.rds' )
+
+
+# get effect estimates and se (inferred from pval)
+sceptre_effects_train = 
+  construct_sceptre_effects_df(sceptre_object = sceptre_obj_train$sceptre_object, 
+                               save_file = '../saves/sceptre/sceptre_effects_train.csv')
+
+sceptre_effects_test = 
+  construct_sceptre_effects_df(sceptre_object = sceptre_obj_test$sceptre_object, 
+                               save_file = '../saves/sceptre/sceptre_effects_test.csv')
+
+sceptre_effects_all = 
+  construct_sceptre_effects_df(sceptre_object = sceptre_obj_all$sceptre_object, 
+                               save_file = '../saves/sceptre/sceptre_effects_all.csv')
+
+t1 = Sys.time(); print(t1 - t0)
+```
+
+# GLM {#glm}
+
+GLM (w/ sample splitting) on same tests as SCEPTRE
+
+Main created objects to be saved are
+
+-   `../saves/poisson_effects_train.csv`
+-   `../saves/poisson_effects_test.csv`
+-   `../saves/poisson_effects_all.csv`
+-   `../saves/negativebinomial_effects_train.csv`
+-   `../saves/negativebinomial_effects_test.csv`
+-   `../saves/negativebinomial_effects_all.csv`
+
+```{r}
+load_sceptre_obj_train = readRDS('../saves/sceptre/sceptre_object_train.rds')
+load_sceptre_obj_test  = readRDS('../saves/sceptre/sceptre_object_test.rds')
+load_sceptre_obj_all   = readRDS('../saves/sceptre/sceptre_object_all.rds')
+
+source('../utils/perform_sceptre_cleary.r')
+
+
+
+{ # ~56 mins
+t0 = Sys.time()
+poisson_effects_train = get_glm_estimate_df(sceptre_object = load_sceptre_obj_train,
+                                            which_glm = 'poisson',
+                                            save_file = '../saves/poisson_effects_train.csv')
+
+poisson_effects_test  = get_glm_estimate_df(sceptre_object = load_sceptre_obj_test,
+                                            which_glm = 'poisson',
+                                            save_file = '../saves/poisson_effects_test.csv')
+
+poisson_effects_all  = get_glm_estimate_df(sceptre_object = load_sceptre_obj_all,
+                                            which_glm = 'poisson',
+                                            save_file = '../saves/poisson_effects_all.csv')
+t1 = Sys.time(); print(t1 - t0)
+}
+
+{ # 2.8 ~ hrs
+t0 = Sys.time()
+nb_effects_train = get_glm_estimate_df(sceptre_object = load_sceptre_obj_train,
+                                       which_glm = 'negative_binomial',
+                                       save_file = '../saves/negativebinomial_effects_train.csv')
+nb_effects_test  = get_glm_estimate_df(sceptre_object = load_sceptre_obj_test,
+                                       which_glm = 'negative_binomial',
+                                       save_file = '../saves/negativebinomial_effects_test.csv')
+nb_effects_all   = get_glm_estimate_df(sceptre_object = load_sceptre_obj_all,
+                                       which_glm = 'negative_binomial',
+                                       save_file = '../saves/negativebinomial_effects_all.csv')
+t1 = Sys.time(); print(t1 - t0)
+}
+```
+
+# EBCI Shrinkage {#ebci}
+
+EBCI Shrinkage on SCEPTRE + GLM (w/ kmeans and mixture model clustering)
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(mclust)) # https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html#introduction
+suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
+
+source('../utils/cluster_and_ebci_shrinkage.r')
+
+
+# load estimated effects
+effects_list = list()
+for(est_method in c('sceptre', 'poisson', 'nb')) {
+  effects_list[[est_method]] = list()
+  for(testsplit in c('train', 'test', 'all')) {
+    if(est_method == 'sceptre') {path = 'sceptre/sceptre'} 
+    else if(est_method == 'nb') {path = 'negativebinomial'}
+    else {path = est_method}
+    effects_list[[est_method]][[testsplit]] = 
+      read.csv(sprintf('../saves/%s_effects_%s.csv',
+                       path, testsplit)) |> 
+      filter(!is.na(estimate)) |>   # remove tests with NA estimates
+      mutate(tstat = estimate / se) # make a tstat column = estimate / se
+  }
+}
+
+
+```
+
+```{r}
+t0 = Sys.time()
+
+ALPHA = .1
+SE_THRESHOLD = .0001
+OTHER_COVARIATES = c('test', 'grna', 'gene', 'pvalue')
+
+VALUE_COLNAME = 'estimate'
+SE_COLNAME = 'se'
+
+
+# time benchmarks
+# 100: 1.3  mins
+# 200: 3.4  mins
+# 400: 4.9  mins
+# all: ~42 mins?
+
+
+method_names = c('sceptre', 'poisson', 'nb')
+clustering_names = c('nocluster', 'kmeans', 'mclust')
+number_of_clusters = c(2, 3, NA)
+
+
+ebci_results = list()
+for(method_name in method_names) {
+  print(method_name)
+  
+  ebci_results[[method_name]] = list()
+  # effects_train = eval(parse(text = parse(text =  paste0(method_name, '_effects_train'))))# [1:400, ]
+  # effects_test  = eval(parse(text = parse(text =  paste0(method_name, '_effects_test' ))))# [1:400, ]
+  effects_train = effects_list[[method_name]][['train']]
+  effects_test  = effects_list[[method_name]][['test']]
+  
+  # all(OTHER_COVARIATES %in% colnames(effects_train)) & all(OTHER_COVARIATES %in% colnames(effects_test)) # check 
+  
+  
+  for(clustering_name in clustering_names) {
+    
+    # no clustering
+    if(clustering_name == 'nocluster') {
+          ebci_results[[method_name]][['nocluster']] = cluster_and_ebci_w_split(
+                          df_cluster = effects_train, 
+                          df_shrink  = effects_test,
+                       value_colname = VALUE_COLNAME, 
+                          se_colname = SE_COLNAME,
+                      cluster_method = 'kmeans',
+                                   k = 1, # <-- no clustering (k=1)
+                      precluster=NA, precluster_centers=NA,
+                               alpha = ALPHA,
+                    other_covariates = OTHER_COVARIATES,
+                        se_threshold = SE_THRESHOLD
+          )
+      
+    } else { # kmeans and mclust
+      for(k in number_of_clusters) {
+        # # skip if k=NA and kmeans (kmeans needs k specified) 
+        # # or   if k=1 and mclust 
+        if((is.na(k) && clustering_name == 'kmeans') ||
+           (!is.na(k) && k == 1 && clustering_name == 'mclust')) {
+          next
+        }
+        # if(!(is.na(k) && clustering_name == 'kmeans')) {
+          ebci_results[[method_name]][[paste0(clustering_name, k)]] = cluster_and_ebci_w_split(
+                          df_cluster = effects_train, 
+                          df_shrink  = effects_test,
+                       value_colname = VALUE_COLNAME, 
+                          se_colname = SE_COLNAME,
+                      cluster_method = clustering_name, # <-- changing cl method
+                                   k = k, # <-- changing k
+                      precluster=NA, precluster_centers=NA,
+                               alpha = ALPHA,
+                    other_covariates = OTHER_COVARIATES,
+                        se_threshold = SE_THRESHOLD
+          )
+        # }
+        
+      }
+      
+    }
+  }
+  
+}
+
+
+saveRDS(ebci_results, '../saves/cluster_and_ebci_results_cellsamplesplit.rds')
+
+t1 = Sys.time(); print(t1 - t0)
+
+```
+
+# Plot Results {#plots}
+
+Visualize the final result of the analysis. The main plots created are:
+
+-   clustering: how unshrunk values are clustered from kmeans or mixture modeling
+-   clustering probabilities: from mixture modeling, the probability of being assigned to each cluster based on unshrunk value
+-   shrinkage: how robust shrinkage changes the unshrunk values
+-   rejection rates: how shrinkage changes rejection rates from the original methods
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+
+
+source('../utils/cluster_and_ebci_shrinkage.r')
+
+ebci_results = readRDS('../saves/cluster_and_ebci_results_cellsamplesplit.rds')
+
+method_nice_names = list('sceptre'='SCEPTRE',
+                         'poisson'='Poisson',
+                         'nb'     ='Negative Binomial')
+
+dir.create('../plots/clustering_and_shrinkage_cellsamplesplit')
+dir.create('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/')
+dir.create('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/')
+```
+
+## Plot Clustering (hard)
+
+```{r plot_clustering}
+
+
+clustering_plots = list()
+for(est_method in names(ebci_results)) {
+  for(cl_method in names(ebci_results[[est_method]])) {
+    
+    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+                filter(train01 == 0)
+    
+    
+    # look at the clustering
+    p_clusters = plot_clustering(df         = shrunk_df |> select(test, unshrunk_value),
+                                 value      = 'unshrunk_value',
+                                 clustering = shrunk_df |> pull(cluster),
+                                 title      = paste0(method_nice_names[[est_method]], ' + ', cl_method),
+                                 xlabel     = 'Unshrunk Estimate')
+    # limit axis range to middle XX (eg 99.8) range
+    p_clusters = p_clusters + 
+                 scale_x_continuous(limits = quantile(shrunk_df$unshrunk_value, 
+                                                      probs = c(.001, .999)))
+    
+    clustering_plots[[paste0(est_method, '_', cl_method)]] = p_clusters + theme(legend.position = 'none')
+    
+    ggsave(plot     = p_clusters,
+           filename = sprintf('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/histogram_clustering_%s_%s.pdf', 
+                              est_method, cl_method), 
+           height = 5, width = 5)
+    
+    
+    
+  }
+  
+}
+
+pdf('../plots/clustering_and_shrinkage_cellsamplesplit/clustering/histogram_clustering_all.pdf', height = 10, width = 20)
+gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
+dev.off()
+
+```
+
+## Plot Clustering (probabilities)
+
+```{r}
+
+
+# try plotting with soft clustering (probabilities and not cluster assignment)
+
+
+  # kmeans_result = poisson_effect_kmeans2
+  # effects_df = poisson_effects
+  # clustering = ebci_results[['poisson']][['kmeans2']]$cluster
+  # clustering = ebci_results[['poisson']][['mclust2']][,c('pr1', 'pr2')]
+  # title = 'asdf'
+  # value = 'tstat'
+
+
+clustering_prob_plots = list()
+for(est_method in names(ebci_results)) {
+  # mixture model clustering names
+  mclust_names = grep(pattern = 'mclust', x = names(ebci_results[[est_method]]), value = TRUE)
+  for(cl_method in mclust_names) {
+    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+                filter(train01 == 0)
+  
+    plot_df = 
+      shrunk_df |> 
+        select(unshrunk_value, all_of(grep('pr[0-9]*', colnames(shrunk_df), value = TRUE))) |> 
+        reshape2::melt(id.vars = c('unshrunk_value'), 
+                       variable.name = 'cluster',
+                       value.name = 'probability')
+    
+    
+    p = ggplot(plot_df,
+           aes(x = unshrunk_value, y = probability, color = cluster)) +
+      geom_line() +
+      # geom_point() +
+      geom_rug(col=rgb(.8,.8,.8,alpha=.2)) +
+      labs(title = paste0(method_nice_names[[est_method]], ' + ', cl_method),
+           x = 'unshrunk value') +
+      # facet_wrap(vars(cluster), ncol=1) +
+      theme_bw() +
+      theme(legend.position = 'right', 
+            panel.grid.minor.y = element_blank()) 
+    
+    # ggExtra::ggMarginal(p, type = "histogram", margins = 'x')
+    # limit axis range to middle XX (eg 99.8) range
+    p = p + scale_x_continuous(limits = quantile(plot_df$unshrunk_value, 
+                                                 probs = c(.001, .999)))
+    clustering_prob_plots[[paste0(est_method, '_', cl_method)]] = 
+        p + theme(legend.position = 'none')
+  }
+  clustering_prob_plots[[paste0(est_method, '_', 'histmarginal')]] =  
+            ggplot(plot_df, aes(x = unshrunk_value, y = after_stat(density))) +
+              geom_histogram(bins = 30) +
+              labs(title = paste0(method_nice_names[[est_method]]),
+                   x = 'unshrunk value') +
+                # facet_wrap(vars(cluster), ncol=1) +
+                theme_bw() +
+                theme(legend.position = 'right', 
+                      panel.grid.minor.y = element_blank()) 
+
+}
+
+
+pdf('../plots/clustering_and_shrinkage/clustering/cluster_probability.pdf', height = 6, width = 12)
+gridExtra::grid.arrange(grobs = clustering_prob_plots,  
+                        # layout_matrix = matrix(c(1, 2, 3,
+                        #                          4, 5, 6,
+                        #                          7, 8, 9), nrow=3)
+                        nrow=3
+                        )
+dev.off()
+
+  
+
+```
+
+## Plot Shrinkage
+
+```{r}
+shrinkage_plots = list()
+for(est_method in names(ebci_results)) {
+  
+  # look at the original tstatistics
+  # unshrunk_df = eval(parse(text = parse(text =  paste0(method, '_effects'))))
+  
+  for(cl_method in names(ebci_results[[est_method]])) {
+    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+                filter(train01 == 0) |>
+                mutate(test = factor(test, 
+                                     levels = c('negative', 'positive', 'discovery'))) |>
+                arrange(test)
+    
+    # look at the shrinkage
+    p_shrinkage = plot_shrinkage2(shrunk_df        = shrunk_df, 
+                                  unshrunk_colname = 'unshrunk_value', 
+                                  shrunk_colname   = 'shrunk_value', 
+                                  CIlower_colname  = 'lower_ci', 
+                                  CIupper_colname  = 'upper_ci',
+                                  sample_idx        = 'default subsample',
+                                  title            = paste0(method_nice_names[[est_method]], ' + ', cl_method),
+                                  legend_position  = c(.81, .12))
+    shrinkage_plots[[paste0(est_method, '_', cl_method)]] = p_shrinkage + theme(legend.position = 'none')
+    
+    ggsave(plot     = p_shrinkage,
+           filename = sprintf('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/shrinkage_%s_%s.pdf', est_method, cl_method), 
+           height = 5, width = 10)
+    }
+}
+
+
+pdf('../plots/clustering_and_shrinkage_cellsamplesplit/shrinkage/shrinkage_all.pdf', height = 10, width = 20)
+gridExtra::grid.arrange(grobs = shrinkage_plots, nrow = 3)
+dev.off()
+```
+
+## Plot Rejection Rates
+
+```{r}
+
+# load estimated effects
+effects_list = list()
+for(est_method in c('sceptre', 'poisson', 'nb')) {
+  effects_list[[est_method]] = list()
+  for(testsplit in c('train', 'test', 'all')) {
+    if(est_method == 'sceptre') {path = 'sceptre/sceptre'} 
+    else if(est_method == 'nb') {path = 'negativebinomial'}
+    else {path = est_method}
+    effects_list[[est_method]][[testsplit]] = 
+      read.csv(sprintf('../saves/%s_effects_%s.csv',
+                       path, testsplit)) |> 
+      filter(!is.na(estimate)) |>   # remove tests with NA estimates
+      mutate(tstat = estimate / se) # make a tstat column = estimate / se
+  }
+}
+
+
+```
+
+```{r rejection_rates}
+# TODO: add a unshrunk results without cellsamplesplitting (larger sample size --> more power?)
+
+rejection_rates = NULL
+for(est_method in names(ebci_results)) {
+  
+  # get the unshrunk rejection rates
+  
+    rejection_rates = rbind(rejection_rates,
+                          # use the df named 'method' + '_effects'
+                          # eval(parse(text = (text =  paste0(est_method, '_effects_test')))) |>
+                          effects_list[[est_method]][['all']] |>
+                            mutate(isSignificant = pvalue < ALPHA) |> 
+                            group_by(test) |> 
+                            summarize(reject = sum(isSignificant), 
+                                      noreject = n() - sum(isSignificant), 
+                                      reject_percent = mean(isSignificant)) |>
+                              mutate(method    = est_method,
+                                     shrinkage = 'unshrunk',
+                                     cl_method = '100% cells', .before = 1))
+    
+    
+  rejection_rates = rbind(rejection_rates,
+                          # use the df named 'method' + '_effects'
+                          # eval(parse(text = (text =  paste0(est_method, '_effects_test')))) |>
+                          effects_list[[est_method]][['test']] |>
+                            mutate(isSignificant = pvalue < ALPHA) |> 
+                            group_by(test) |> 
+                            summarize(reject = sum(isSignificant), 
+                                      noreject = n() - sum(isSignificant), 
+                                      reject_percent = mean(isSignificant)) |>
+                              mutate(method    = est_method,
+                                     shrinkage = 'unshrunk',
+                                     cl_method = '50% cells', .before = 1))
+  
+  
+  
+  for(cl_method in names(ebci_results[[est_method]])) {
+    
+    # get the shrunk rejection rate
+    rejection_rates = rbind(rejection_rates,
+                            ebci_results[[est_method]][[cl_method]] |> 
+                              filter(train01 == 0) |>
+                              mutate(isSignificant = !(lower_ci <= 0 & 0 <= upper_ci)) |> 
+                              group_by(test) |> 
+                              summarize(reject = sum(isSignificant),
+                                        noreject = n() - sum(isSignificant), 
+                                        reject_percent = mean(isSignificant)) |>
+                              mutate(method    = est_method,
+                                     shrinkage = 'ebci',
+                                     cl_method = cl_method, .before = 1))
+    
+  }
+  
+}
+
+
+
+rejection_rates = rejection_rates |> 
+  mutate(shrinkage = factor(shrinkage, 
+                            levels = c('unshrunk', 'ebci')),
+         test      = factor(test, 
+                            levels = c('negative', 'positive', 'discovery')),
+         method    = factor(method,
+                            levels = c('sceptre', 'poisson', 'nb')),
+         cl_method = factor(cl_method,
+                            levels = c('100% cells', '50% cells', names(ebci_results[[1]]))))
+
+
+ggplot(rejection_rates, 
+       aes(y = reject_percent, 
+           # x = interaction(ebci, method),
+           x = method,
+           group = test, fill = test)) +
+  
+  geom_col(alpha = .9, color = 'black', position = 'dodge') +
+  geom_hline(aes(yintercept = .1), color = 'black', linetype = 'dashed') +
+  labs(title = 'Rejection Rates',
+       subtitle = 'clustering + ebci shrinkage on estimate',
+       y = 'rejection rate', fill = 'test type') +
+  scale_fill_discrete(type = c('darkgreen', 'firebrick', 'gold3')) +
+  scale_y_continuous(breaks = seq(from = 0, to = 1, by = .1)) +
+  scale_x_discrete(labels = method_nice_names) +
+  facet_grid(cols = vars(shrinkage, cl_method)) +
+  theme_bw() +
+  theme(panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(), 
+        strip.background = element_rect(fill = 'white'), 
+        axis.text.x = element_text(angle = 30, vjust = 1, hjust=1),
+        # legend.background = element_rect(color = 'black', linewidth = .3),
+        legend.position.inside = c(.9, .8),
+        plot.title = element_text(hjust = .5),
+        plot.subtitle = element_text(hjust = .5))
+
+ggsave('../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.pdf', height = 5, width = 10)
+ggsave('../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.png', height = 5, width = 10)
+
+```
+
+
+
+
+![rejection_rates](./../plots/clustering_and_shrinkage_cellsamplesplit/rejection_rates_tstat_shrinkage.pdf)
+
+
+
+![testing inserting image](./../plots/test.pdf)
+
+
+
+
+
+
+
+
+
+
+

@@ -2,7 +2,14 @@
 /saves/
 
 # saved plots
-plots/
+plots/*
+!plots/cellsamplesplit
+plots/cellsamplesplit/*
+!plots/cellsamplesplit/clustering
+plots/cellsamplesplit/clustering/*
+!plots/cellsamplesplit/shrinkage
+plots/cellsamplesplit/shrinkage/*
+
 !plots/cellsamplesplit/clustering/clustering_all.png
 !plots/cellsamplesplit/clustering/cluster_probability.png
 !plots/cellsamplesplit/shrinkage/shrinkage_all.png

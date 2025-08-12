@@ -192,6 +192,7 @@ suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(mclust)) # https://cran.r-project.org/web/packages/mclust/vignettes/mclust.html#introduction
 suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
 
+source('../utils/myKmeans.R')
 source('../utils/cluster_and_ebci_shrinkage.r')
 
 
@@ -233,19 +234,19 @@ SE_COLNAME = 'se'
 
 
 method_names = c('sceptre', 'poisson', 'nb')
-clustering_names = c('nocluster', 'kmeans', 'mclust')
+clustering_names = c('nocluster', 'myKmeans', 'kmeans', 'mclust') # TODO: add myKmeans
 number_of_clusters = c(2, 3, NA)
 
 
-ebci_results = list()
+ebci_results     = list()
 for(method_name in method_names) {
   print(method_name)
   
   ebci_results[[method_name]] = list()
   # effects_train = eval(parse(text = parse(text =  paste0(method_name, '_effects_train'))))# [1:400, ]
   # effects_test  = eval(parse(text = parse(text =  paste0(method_name, '_effects_test' ))))# [1:400, ]
-  effects_train = effects_list[[method_name]][['train']]
-  effects_test  = effects_list[[method_name]][['test']]
+  effects_train = effects_list[[method_name]][['train']]# [1:100, ]
+  effects_test  = effects_list[[method_name]][['test']]# [1:100, ]
   
   # all(OTHER_COVARIATES %in% colnames(effects_train)) & all(OTHER_COVARIATES %in% colnames(effects_test)) # check 
   
@@ -254,7 +255,7 @@ for(method_name in method_names) {
     
     # no clustering
     if(clustering_name == 'nocluster') {
-          ebci_results[[method_name]][['nocluster']] = cluster_and_ebci_w_split(
+          cluster_and_ebci_results = cluster_and_ebci_w_split(
                           df_cluster = effects_train, 
                           df_shrink  = effects_test,
                        value_colname = VALUE_COLNAME, 
@@ -266,28 +267,34 @@ for(method_name in method_names) {
                     other_covariates = OTHER_COVARIATES,
                         se_threshold = SE_THRESHOLD
           )
+          ebci_results[[method_name]][['nocluster']] = list()
+          ebci_results[[method_name]][['nocluster']][['ebci_df']]  = cluster_and_ebci_results$ebci_res
+          ebci_results[[method_name]][['nocluster']][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
       
     } else { # kmeans and mclust
       for(k in number_of_clusters) {
         # # skip if k=NA and kmeans (kmeans needs k specified) 
         # # or   if k=1 and mclust 
-        if((is.na(k) && clustering_name == 'kmeans') ||
+        if((is.na(k) && clustering_name %in% c('myKmeans', 'kmeans')) ||
            (!is.na(k) && k == 1 && clustering_name == 'mclust')) {
           next
         }
         # if(!(is.na(k) && clustering_name == 'kmeans')) {
-          ebci_results[[method_name]][[paste0(clustering_name, k)]] = cluster_and_ebci_w_split(
-                          df_cluster = effects_train, 
-                          df_shrink  = effects_test,
+          cluster_and_ebci_results = cluster_and_ebci_w_split(
+                          df_cluster = effects_train,   # <-- changing df 
+                          df_shrink  = effects_test,    # <-- changing df
                        value_colname = VALUE_COLNAME, 
                           se_colname = SE_COLNAME,
                       cluster_method = clustering_name, # <-- changing cl method
-                                   k = k, # <-- changing k
+                                   k = k,               # <-- changing k
                       precluster=NA, precluster_centers=NA,
                                alpha = ALPHA,
                     other_covariates = OTHER_COVARIATES,
                         se_threshold = SE_THRESHOLD
           )
+          ebci_results[[method_name]][[paste0(clustering_name, k)]] = list()
+          ebci_results[[method_name]][[paste0(clustering_name, k)]][['ebci_df']]  = cluster_and_ebci_results$ebci_res
+          ebci_results[[method_name]][[paste0(clustering_name, k)]][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
         # }
         
       }
@@ -341,7 +348,7 @@ clustering_plots = list()
 for(est_method in names(ebci_results)) {
   for(cl_method in names(ebci_results[[est_method]])) {
     
-    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0)
     
     
@@ -397,7 +404,7 @@ for(est_method in names(ebci_results)) {
   # mixture model clustering names
   mclust_names = grep(pattern = 'mclust', x = names(ebci_results[[est_method]]), value = TRUE)
   for(cl_method in mclust_names) {
-    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0)
   
     plot_df = 
@@ -470,7 +477,7 @@ for(est_method in names(ebci_results)) {
   # unshrunk_df = eval(parse(text = parse(text =  paste0(method, '_effects'))))
   
   for(cl_method in names(ebci_results[[est_method]])) {
-    shrunk_df = ebci_results[[est_method]][[cl_method]] |>
+    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0) |>
                 mutate(test = factor(test, 
                                      levels = c('negative', 'positive', 'discovery'))) |>
@@ -533,7 +540,7 @@ for(est_method in c('sceptre', 'poisson', 'nb')) {
 rejection_rates = NULL
 for(est_method in names(ebci_results)) {
   
-  # get the unshrunk rejection rates
+    # get the unshrunk rejection rates
   
     rejection_rates = rbind(rejection_rates,
                           # use the df named 'method' + '_effects'
@@ -549,7 +556,7 @@ for(est_method in names(ebci_results)) {
                                      cl_method = '100% cells', .before = 1))
     
     
-  rejection_rates = rbind(rejection_rates,
+    rejection_rates = rbind(rejection_rates,
                           # use the df named 'method' + '_effects'
                           # eval(parse(text = (text =  paste0(est_method, '_effects_test')))) |>
                           effects_list[[est_method]][['test']] |>
@@ -568,7 +575,7 @@ for(est_method in names(ebci_results)) {
     
     # get the shrunk rejection rate
     rejection_rates = rbind(rejection_rates,
-                            ebci_results[[est_method]][[cl_method]] |> 
+                            ebci_results[[est_method]][[cl_method]][['ebci_df']] |> 
                               filter(train01 == 0) |>
                               mutate(isSignificant = !(lower_ci <= 0 & 0 <= upper_ci)) |> 
                               group_by(test) |> 

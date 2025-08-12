@@ -79,8 +79,8 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
   assertthat::assert_that(all(c(value_colname, se_colname) %in% colnames(df_shrink)),
                           msg = "'value_colname' and 'se_colname' must be columns of df_shrink")
   
-  assertthat::assert_that(cluster_method %in% c('kmeans', 'mclust', 'preclustered'),
-                          msg = "cluster_method must be one of {'kmeans', 'mclust', 'preclustered'}")
+  assertthat::assert_that(cluster_method %in% c('myKmeans', 'kmeans', 'mclust', 'preclustered'),
+                          msg = "cluster_method must be one of {'myKmeans', 'kmeans', 'mclust', 'preclustered'}")
   assertthat::assert_that( is.na(k) || ((k %% 1 == 0) && k > 0),
                            msg = "if k is not NA, k must be a whole number and positive")
   assertthat::assert_that( cluster_method != 'preclustered' || (!all(is.na(precluster)) && !all(is.na(precluster_centers))),
@@ -123,6 +123,36 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
             classification_test = clustfit_test$classification
             cl_prob_matrix_test = clustfit_test$z
             shrinkage_point_test= clustfit_test$z %*% clustfit$parameters$mean
+            
+          },
+          'myKmeans' = {
+            
+            mlpackKmeans =  mlpack::kmeans(cluster = k,
+                                        input = df_cluster[,value_colname, drop = FALSE],
+                                        kmeans_plus_plus = TRUE, 
+                                        max_iterations = 100) # decrease max iter to save time
+            
+            kmeansfit = myKmeans(values = df_cluster[,value_colname], 
+                                 k = k, 
+                                 fixed_center = 0, 
+                                 initial_centroid = mlpackKmeans$centroid |> as.vector(), 
+                                 max_iter = 1000, 
+                                 threshold = .0001)
+            
+            
+            classification_train = kmeansfit$cluster_assignment # classification vector
+            cl_prob_matrix_train = one_hot_encode(classification_train) # construct a 'prob' matrix, but it is just 1's and 0's
+            # shrink towards weighted average of the k clusters' mean (weights=probs)
+            #         shrinkage points = cluster probabilities %*% cluster centers
+            #             (#tests x 1) =  (#tests x #clusters) %*% (#clusters x 1)
+            shrinkage_point_train =  cl_prob_matrix_train %*% kmeansfit$centroid
+            
+            
+            # get assignments on test dataset
+            classification_test = get_closest_cluster(values = df_shrink[,value_colname], 
+                                                      centroids = kmeansfit$centroid)
+            cl_prob_matrix_test = one_hot_encode(classification_test)
+            shrinkage_point_test= cl_prob_matrix_test %*% kmeansfit$centroid
             
           },
           'kmeans' = {
@@ -275,7 +305,9 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
                                                        train01 = 1)
                               ) |>
                                 select(any_of(colnames(ebci_res))))
-  return(ebci_res)
+  # return(ebci_res)
+  return(list(ebci_res=ebci_res,
+              ebci_obj=ebci_obj))
 }
 
 

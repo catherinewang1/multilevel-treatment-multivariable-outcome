@@ -3,17 +3,30 @@
 
 # saved plots
 plots/*
-!plots/cellsamplesplit
-plots/cellsamplesplit/*
-!plots/cellsamplesplit/clustering
-plots/cellsamplesplit/clustering/*
-!plots/cellsamplesplit/shrinkage
-plots/cellsamplesplit/shrinkage/*
+!plots/equal
+plots/equal/*
+!plots/equal/cluster
+plots/equal/cluster/*
+!plots/equal/shrinkage
+plots/equal/shrinkage/*
 
-!plots/cellsamplesplit/clustering/clustering_all.png
-!plots/cellsamplesplit/clustering/cluster_probability.png
-!plots/cellsamplesplit/shrinkage/shrinkage_all.png
-!plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png 
+!plots/se
+plots/se/*
+!plots/se/cluster
+plots/se/cluster/*
+!plots/se/shrinkage
+plots/se/shrinkage/*
+
+
+!plots/equal/cluster/cluster_all.png
+!plots/equal/cluster/cluster_probability.png
+!plots/equal/shrinkage/shrinkage_all.png
+!plots/equal/rejection_rates.png 
+
+!plots/se/cluster/cluster_all.png
+!plots/se/cluster/cluster_probability.png
+!plots/se/shrinkage/shrinkage_all.png
+!plots/se/rejection_rates.png 
 
 # notebook saved files
 /notebooks/shrinkEstimates_files/

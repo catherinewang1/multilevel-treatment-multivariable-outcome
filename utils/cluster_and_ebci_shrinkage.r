@@ -48,6 +48,8 @@
 #'     e.g. 'tstat - shrinkage_point ~ 0' needs shrinkage_point to be added
 #'          back to get the original estimate, but this is not coded for custom
 #'          formulas
+#' @param weights (character) weight type for ebci shrinkage
+#'     should be either 'equal' or '1/se**2'
 #' @param alpha (numeric) (0,1) significance level of ebci calculations
 #'              (used for the length of the CI)
 #' @param other_covariates (character vector) of column names of effects_df to
@@ -64,6 +66,7 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
                                      k,
                                      precluster=NA, precluster_centers=NA,
                                      # ebci_formula = NA,
+                                     weights = NULL,
                                      alpha=.1, other_covariates = c('test'), se_threshold=.0001) {
   
   # effects_df = poisson_effects |> head(100);
@@ -87,6 +90,8 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
                            msg = "if cluster_method is 'preclustered', precluster and precluster_centers must be provided")
   assertthat::assert_that(  cluster_method != 'kmeans' || !is.na(k),
                             msg = "when cluster_method='kmeans', k must be specified (cannot be NA)")
+  assertthat::assert_that(is.null(weights) || weights %in% c('equal', '1/se**2'),
+                          msg = "weights must be NULL, 'equal', or '1/se**2'")
   
   
   
@@ -241,24 +246,32 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
   #   ebci_formula = 'tstat - shrinkage_point ~ 0'
   # }
   
+  
+  # going to take more memory but whatever... just remove after ebci fit
+  ebci_data = df_shrink |> 
+    select(all_of(c(value_colname, se_colname))) |> 
+    mutate(shrinkage_point = shrinkage_point_test) |>
+    # add new columns bc the formula is annoying and wants the
+    # se and weights specified not as a string but by the names
+    # of the cols themselves and has issues
+    mutate(my_se      = eval(parse(text = se_colname)))
+  
+  # add my_weights col that is either 1/se**2 or 1 (equal)
+  if(is.null(weights) || weights == '1/se**2') {
+    ebci_data = ebci_data |> mutate(my_weights = eval(parse(text = sprintf('1/%s^2', se_colname))))
+  } else if(weights == 'equal') {
+    ebci_data = ebci_data |> mutate(my_weights = 1)
+  }
+  
   ebci_obj = ebci(formula = sprintf('%s - shrinkage_point ~ 0', value_colname),
                   # formula = 'tstat - shrinkage_point ~ 0', # ebci_formula
-                  data    = df_shrink |> 
-                    select(all_of(c(value_colname, se_colname))) |> 
-                    mutate(shrinkage_point = shrinkage_point_test) |>
-                    # add new columns bc the formula is annoying and wants the
-                    # se and weights specified not as a string but by the names
-                    # of the cols themselves and has issues ... annoying
-                    mutate(my_se      = eval(parse(text = se_colname)),      
-                           my_weights = eval(parse(text = sprintf('1/%s^2', se_colname)))), 
-                  
+                  data    = ebci_data, 
                   # se = eval(parse(text = se_colname)), 
                   # weights =  eval(parse(text = sprintf('1/%s^2', se_colname))), 
                   se = my_se,
                   weights = my_weights,
                   alpha = alpha)
-  
-  
+  rm(ebci_data)
   
   ebci_res = cbind(df_shrink |> select(all_of(other_covariates)),
                    data.frame(cl_prob_matrix_test) |> `colnames<-`(paste0('pr', 1:ncol(cl_prob_matrix_test))),

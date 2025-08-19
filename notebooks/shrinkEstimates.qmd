@@ -227,82 +227,87 @@ SE_COLNAME = 'se'
 
 
 # time benchmarks
-# 100: 1.3  mins
+# 100: 1.3  mins, 7 mins
 # 200: 3.4  mins
 # 400: 4.9  mins
 # all: ~42 mins?
 
-
+weights_names = c('equal', '1/se**2')
 method_names = c('sceptre', 'poisson', 'nb')
-clustering_names = c('nocluster', 'myKmeans', 'kmeans', 'mclust') # TODO: add myKmeans
+clustering_names = c('nocluster', 'myKmeans', 'kmeans', 'mclust')
 number_of_clusters = c(2, 3, NA)
 
 
 ebci_results     = list()
-for(method_name in method_names) {
-  print(method_name)
-  
-  ebci_results[[method_name]] = list()
-  # effects_train = eval(parse(text = parse(text =  paste0(method_name, '_effects_train'))))# [1:400, ]
-  # effects_test  = eval(parse(text = parse(text =  paste0(method_name, '_effects_test' ))))# [1:400, ]
-  effects_train = effects_list[[method_name]][['train']]# [1:100, ]
-  effects_test  = effects_list[[method_name]][['test']]# [1:100, ]
-  
-  # all(OTHER_COVARIATES %in% colnames(effects_train)) & all(OTHER_COVARIATES %in% colnames(effects_test)) # check 
-  
-  
-  for(clustering_name in clustering_names) {
+for(weights_name in weights_names) {
+  print(sprintf('   %s', weights_name))
+  ebci_results[[weights_name]] = list()
+  for(method_name in method_names) {
+    print(sprintf('  %s', method_name))
     
-    # no clustering
-    if(clustering_name == 'nocluster') {
-          cluster_and_ebci_results = cluster_and_ebci_w_split(
-                          df_cluster = effects_train, 
-                          df_shrink  = effects_test,
-                       value_colname = VALUE_COLNAME, 
-                          se_colname = SE_COLNAME,
-                      cluster_method = 'kmeans',
-                                   k = 1, # <-- no clustering (k=1)
-                      precluster=NA, precluster_centers=NA,
-                               alpha = ALPHA,
-                    other_covariates = OTHER_COVARIATES,
-                        se_threshold = SE_THRESHOLD
-          )
-          ebci_results[[method_name]][['nocluster']] = list()
-          ebci_results[[method_name]][['nocluster']][['ebci_df']]  = cluster_and_ebci_results$ebci_res
-          ebci_results[[method_name]][['nocluster']][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
+    ebci_results[[weights_name]][[method_name]] = list()
+    # effects_train = eval(parse(text = parse(text =  paste0(method_name, '_effects_train'))))# [1:400, ]
+    # effects_test  = eval(parse(text = parse(text =  paste0(method_name, '_effects_test' ))))# [1:400, ]
+    effects_train = effects_list[[method_name]][['train']]# [1:100, ]
+    effects_test  = effects_list[[method_name]][['test']]# [1:100, ]
+    
+    # all(OTHER_COVARIATES %in% colnames(effects_train)) & all(OTHER_COVARIATES %in% colnames(effects_test)) # check 
+    
+    
+    for(clustering_name in clustering_names) {
       
-    } else { # kmeans and mclust
-      for(k in number_of_clusters) {
-        # # skip if k=NA and kmeans (kmeans needs k specified) 
-        # # or   if k=1 and mclust 
-        if((is.na(k) && clustering_name %in% c('myKmeans', 'kmeans')) ||
-           (!is.na(k) && k == 1 && clustering_name == 'mclust')) {
-          next
+      # no clustering
+      if(clustering_name == 'nocluster') {
+            cluster_and_ebci_results = cluster_and_ebci_w_split(
+                            df_cluster = effects_train, 
+                            df_shrink  = effects_test,
+                         value_colname = VALUE_COLNAME, 
+                            se_colname = SE_COLNAME,
+                               weights = weights_name,
+                        cluster_method = 'kmeans',
+                                     k = 1, # <-- no clustering (k=1)
+                        precluster=NA, precluster_centers=NA,
+                                 alpha = ALPHA,
+                      other_covariates = OTHER_COVARIATES,
+                          se_threshold = SE_THRESHOLD
+            )
+            ebci_results[[weights_name]][[method_name]][['nocluster']] = list()
+            ebci_results[[weights_name]][[method_name]][['nocluster']][['ebci_df']]  = cluster_and_ebci_results$ebci_res
+            ebci_results[[weights_name]][[method_name]][['nocluster']][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
+        
+      } else { # kmeans and mclust
+        for(k in number_of_clusters) {
+          # # skip if k=NA and kmeans (kmeans needs k specified) 
+          # # or   if k=1 and mclust 
+          if((is.na(k) && clustering_name %in% c('myKmeans', 'kmeans')) ||
+             (!is.na(k) && k == 1 && clustering_name == 'mclust')) {
+            next
+          }
+          # if(!(is.na(k) && clustering_name == 'kmeans')) {
+            cluster_and_ebci_results = cluster_and_ebci_w_split(
+                            df_cluster = effects_train,   # <-- changing df 
+                            df_shrink  = effects_test,    # <-- changing df
+                         value_colname = VALUE_COLNAME, 
+                            se_colname = SE_COLNAME,
+                        cluster_method = clustering_name, # <-- changing cl method
+                                     k = k,               # <-- changing k
+                        precluster=NA, precluster_centers=NA,
+                                 alpha = ALPHA,
+                      other_covariates = OTHER_COVARIATES,
+                          se_threshold = SE_THRESHOLD
+            )
+            ebci_results[[weights_name]][[method_name]][[paste0(clustering_name, k)]] = list()
+            ebci_results[[weights_name]][[method_name]][[paste0(clustering_name, k)]][['ebci_df']]  = cluster_and_ebci_results$ebci_res
+            ebci_results[[weights_name]][[method_name]][[paste0(clustering_name, k)]][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
+          # }
+          
         }
-        # if(!(is.na(k) && clustering_name == 'kmeans')) {
-          cluster_and_ebci_results = cluster_and_ebci_w_split(
-                          df_cluster = effects_train,   # <-- changing df 
-                          df_shrink  = effects_test,    # <-- changing df
-                       value_colname = VALUE_COLNAME, 
-                          se_colname = SE_COLNAME,
-                      cluster_method = clustering_name, # <-- changing cl method
-                                   k = k,               # <-- changing k
-                      precluster=NA, precluster_centers=NA,
-                               alpha = ALPHA,
-                    other_covariates = OTHER_COVARIATES,
-                        se_threshold = SE_THRESHOLD
-          )
-          ebci_results[[method_name]][[paste0(clustering_name, k)]] = list()
-          ebci_results[[method_name]][[paste0(clustering_name, k)]][['ebci_df']]  = cluster_and_ebci_results$ebci_res
-          ebci_results[[method_name]][[paste0(clustering_name, k)]][['ebci_obj']] = cluster_and_ebci_results$ebci_obj
-        # }
         
       }
-      
     }
+    
   }
-  
-}
+} 
 
 
 saveRDS(ebci_results, '../saves/cluster_and_ebci_results_cellsamplesplit.rds')
@@ -328,27 +333,36 @@ suppressPackageStartupMessages(library(ggplot2))
 source('../utils/cluster_and_ebci_shrinkage.r')
 
 ebci_results = readRDS('../saves/cluster_and_ebci_results_cellsamplesplit.rds')
-
+# ebci_results = ebci_results[['1/se**2']]
+# ebci_results = ebci_results[['equal']]
+  
 method_nice_names = list('sceptre'='SCEPTRE',
                          'poisson'='Poisson',
                          'nb'     ='Negative Binomial')
 
+weights_folder_names = list('equal'='equal',
+                            '1/se**2'='se') # for folder name
+
 # wtf, path file is too long sometimes (windows 10)... keep names and paths shorter...
-dir.create('../plots/cellsamplesplit')
-dir.create('../plots/cellsamplesplit/clustering/')
-dir.create('../plots/cellsamplesplit/shrinkage/')
+dir.create('../plots/')
+dir.create('../plots/equal/')
+dir.create('../plots/equal/cluster/')
+dir.create('../plots/equal/shrinkage/')
+dir.create('../plots/se/')
+dir.create('../plots/se/cluster/')
+dir.create('../plots/se/shrinkage/')
 ```
 
 ## Plot Clustering (hard)
 
 ```{r plot_clustering}
 
-
+for(weights_name in names(ebci_results)) {
 clustering_plots = list()
-for(est_method in names(ebci_results)) {
-  for(cl_method in names(ebci_results[[est_method]])) {
+for(est_method in names(ebci_results[[weights_name]])) {
+for(cl_method in names(ebci_results[[weights_name]][[est_method]])) {
     
-    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
+    shrunk_df = ebci_results[[weights_name]][[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0)
     
     
@@ -366,20 +380,23 @@ for(est_method in names(ebci_results)) {
     clustering_plots[[paste0(est_method, '_', cl_method)]] = p_clusters + theme(legend.position = 'none')
     
     ggsave(plot     = p_clusters,
-           filename = sprintf('../plots/cellsamplesplit/clustering/clustering_%s_%s.pdf', 
-                              est_method, cl_method), 
+           filename = sprintf('../plots/%s/cluster/cluster_%s_%s.pdf', 
+                              weights_folder_names[[weights_name]], est_method, cl_method), 
            height = 5, width = 5)
-  }
-  
+}
+}
+pdf(sprintf('../plots/%s/cluster/cluster_all.pdf', weights_folder_names[[weights_name]]), 
+    height = 10, width = 20)
+gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
+dev.off()
+
+png(sprintf('../plots/%s/cluster/cluster_all.png', weights_folder_names[[weights_name]]), 
+    res = 100, units = 'in', height = 10, width = 20)
+gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
+dev.off()
 }
 
-pdf('../plots/cellsamplesplit/clustering/clustering_all.pdf', height = 10, width = 20)
-gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
-dev.off()
 
-png('../plots/cellsamplesplit/clustering/clustering_all.png', res = 100, units = 'in', height = 10, width = 20)
-gridExtra::grid.arrange(grobs = clustering_plots, nrow = 3)
-dev.off()
 
 ```
 
@@ -398,13 +415,13 @@ dev.off()
   # title = 'asdf'
   # value = 'tstat'
 
-
+for(weights_name in names(ebci_results)) {
 clustering_prob_plots = list()
-for(est_method in names(ebci_results)) {
+for(est_method in names(ebci_results[[weights_name]])) {
   # mixture model clustering names
-  mclust_names = grep(pattern = 'mclust', x = names(ebci_results[[est_method]]), value = TRUE)
+  mclust_names = grep(pattern = 'mclust', x = names(ebci_results[[weights_name]][[est_method]]), value = TRUE)
   for(cl_method in mclust_names) {
-    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
+    shrunk_df = ebci_results[[weights_name]][[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0)
   
     plot_df = 
@@ -447,7 +464,8 @@ for(est_method in names(ebci_results)) {
 }
 
 
-pdf('../plots/cellsamplesplit/clustering/cluster_probability.pdf', height = 6, width = 12)
+pdf(sprintf('../plots/%s/cluster/cluster_probability.pdf', weights_folder_names[[weights_name]]), 
+    height = 6, width = 12)
 gridExtra::grid.arrange(grobs = clustering_prob_plots,  
                         # layout_matrix = matrix(c(1, 2, 3,
                         #                          4, 5, 6,
@@ -456,7 +474,8 @@ gridExtra::grid.arrange(grobs = clustering_prob_plots,
                         )
 dev.off()
 
-png('../plots/cellsamplesplit/clustering/cluster_probability.png', res = 100, units = 'in', height = 6, width = 12)
+png(sprintf('../plots/%s/cluster/cluster_probability.png', weights_folder_names[[weights_name]]), 
+    res = 100, units = 'in', height = 6, width = 12)
 gridExtra::grid.arrange(grobs = clustering_prob_plots,  
                         # layout_matrix = matrix(c(1, 2, 3,
                         #                          4, 5, 6,
@@ -464,20 +483,23 @@ gridExtra::grid.arrange(grobs = clustering_prob_plots,
                         nrow=3
                         )
 dev.off()
+}
 
 ```
 
 ## Plot Shrinkage
 
 ```{r}
+
+for(weights_name in names(ebci_results)) {
 shrinkage_plots = list()
-for(est_method in names(ebci_results)) {
+for(est_method in names(ebci_results[[weights_name]])) {
   
   # look at the original tstatistics
   # unshrunk_df = eval(parse(text = parse(text =  paste0(method, '_effects'))))
   
-  for(cl_method in names(ebci_results[[est_method]])) {
-    shrunk_df = ebci_results[[est_method]][[cl_method]][['ebci_df']] |>
+  for(cl_method in names(ebci_results[[weights_name]][[est_method]])) {
+    shrunk_df = ebci_results[[weights_name]][[est_method]][[cl_method]][['ebci_df']] |>
                 filter(train01 == 0) |>
                 mutate(test = factor(test, 
                                      levels = c('negative', 'positive', 'discovery'))) |>
@@ -495,20 +517,25 @@ for(est_method in names(ebci_results)) {
     shrinkage_plots[[paste0(est_method, '_', cl_method)]] = p_shrinkage + theme(legend.position = 'none')
     
     ggsave(plot     = p_shrinkage,
-           filename = sprintf('../plots/cellsamplesplit/shrinkage/shrinkage_%s_%s.pdf', est_method, cl_method), 
+           filename = sprintf('../plots/%s/shrinkage/shrinkage_%s_%s.pdf', 
+                              weights_folder_names[[weights_name]],  est_method, cl_method), 
            height = 5, width = 10)
     }
 }
 
 
-pdf('../plots/cellsamplesplit/shrinkage/shrinkage_all.pdf', height = 10, width = 20)
+pdf(sprintf('../plots/%s/shrinkage/shrinkage_all.pdf', weights_folder_names[[weights_name]]), 
+    height = 10, width = 25)
 gridExtra::grid.arrange(grobs = shrinkage_plots, nrow = 3)
 dev.off()
 
 
-png('../plots/cellsamplesplit/shrinkage/shrinkage_all.png', res = 100, units = 'in', height = 10, width = 20)
+png(sprintf('../plots/%s/shrinkage/shrinkage_all.png', weights_folder_names[[weights_name]]), 
+    res = 100, units = 'in', height = 10, width = 25)
 gridExtra::grid.arrange(grobs = shrinkage_plots, nrow = 3)
 dev.off()
+
+}
 ```
 
 ## Plot Rejection Rates
@@ -535,13 +562,13 @@ for(est_method in c('sceptre', 'poisson', 'nb')) {
 ```
 
 ```{r rejection_rates}
-# TODO: add a unshrunk results without cellsamplesplitting (larger sample size --> more power?)
-
+for(weights_name in names(ebci_results)) {
 rejection_rates = NULL
-for(est_method in names(ebci_results)) {
+for(est_method in names(ebci_results[[weights_name]])) {
   
     # get the unshrunk rejection rates
-  
+    
+    # add a unshrunk results without cellsamplesplitting (larger sample size --> more power?)
     rejection_rates = rbind(rejection_rates,
                           # use the df named 'method' + '_effects'
                           # eval(parse(text = (text =  paste0(est_method, '_effects_test')))) |>
@@ -571,11 +598,11 @@ for(est_method in names(ebci_results)) {
   
   
   
-  for(cl_method in names(ebci_results[[est_method]])) {
+  for(cl_method in names(ebci_results[[weights_name]][[est_method]])) {
     
     # get the shrunk rejection rate
     rejection_rates = rbind(rejection_rates,
-                            ebci_results[[est_method]][[cl_method]][['ebci_df']] |> 
+                            ebci_results[[weights_name]][[est_method]][[cl_method]][['ebci_df']] |> 
                               filter(train01 == 0) |>
                               mutate(isSignificant = !(lower_ci <= 0 & 0 <= upper_ci)) |> 
                               group_by(test) |> 
@@ -600,7 +627,7 @@ rejection_rates = rejection_rates |>
          method    = factor(method,
                             levels = c('sceptre', 'poisson', 'nb')),
          cl_method = factor(cl_method,
-                            levels = c('100% cells', '50% cells', names(ebci_results[[1]]))))
+                            levels = c('100% cells', '50% cells', names(ebci_results[[weights_name]][[1]]))))
 
 
 ggplot(rejection_rates, 
@@ -628,8 +655,12 @@ ggplot(rejection_rates,
         plot.title = element_text(hjust = .5),
         plot.subtitle = element_text(hjust = .5))
 
-ggsave('../plots/cellsamplesplit/rejection_rates_tstat_shrinkage.pdf', height = 5, width = 10)
-ggsave('../plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png', height = 5, width = 10)
+ggsave(sprintf('../plots/%s/rejection_rates.pdf', weights_folder_names[[weights_name]]), 
+       height = 5, width = 12)
+ggsave(sprintf('../plots/%s/rejection_rates.png', weights_folder_names[[weights_name]]), 
+       height = 5, width = 12)
+}
+
 
 ```
 

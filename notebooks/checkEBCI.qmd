@@ -1,0 +1,495 @@
+---
+title: "checkEBCI"
+format: html
+editor: source
+---
+
+
+
+
+Goal: Check the EBCI shrinkage process, especially for kmeans clustering results. The estimates are being shrunk towards the overall mean very strongly.
+
+
+
+
+```{r}
+
+
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(ebci))
+
+source('../utils/cluster_and_ebci_shrinkage.r')
+
+
+ebci_results = readRDS('../saves/cluster_and_ebci_results_cellsamplesplit.rds')
+
+method_nice_names = list('sceptre'='SCEPTRE',
+                         'poisson'='Poisson',
+                         'nb'     ='Negative Binomial')
+```
+
+
+# SCEPTRE kmeans 2 vs kmeans 3
+
+
+## EBCI Confidence Interval Lengths 
+
+We focus on SCEPTRE with kmeans 2 vs kmeans 3 clusters. kmeans with 2 clusters seems to give reasonable results, where the CI lengths are reasonable, but kmeans with 3 clusters gives very small CI lengths. These lengths are recorded in the ebci object result's dataframe column `len_eb`. (The plots displayed show this value, but this value would actually be 1/2 of the CI length because the CI's are constructed by  estimate $\pm$ `len_eb`)
+
+
+
+
+
+```{r}
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+len_eb_df = NULL
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  # names(ebci_results[[est_method]][[cl_method]])
+  # ebci_results[[est_method]][[cl_method]]$ebci_obj
+  
+  len_eb_df = rbind(len_eb_df, 
+                    data.frame(est_method = est_method,
+                               cl_method  = cl_method, 
+                               len_eb = ebci_results[[est_method]][[cl_method]]$ebci_obj$df$len_eb))
+}
+
+ggplot(len_eb_df, 
+       aes(x = len_eb, group = cl_method, fill = cl_method)) +
+  geom_histogram(position = 'dodge') +
+  labs(title = 'EBCI CI lengths on SCEPTRE Estimates') +
+  theme_classic()
+```
+
+
+## Look at the original unshrunk estimates and the cluster assignments
+
+
+
+```{r}
+
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+plot_df = NULL
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  
+  shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
+              filter(train01 == 0) |>
+              select(pvalue, cluster, shrinkage_point, unshrunk_value, se) |>
+              mutate(est_method = est_method,
+                     cl_method  = cl_method)
+  # colnames(shrunk_df)
+  
+  plot_df = rbind(plot_df,
+                  shrunk_df)
+}
+
+# original unshrunk values
+ggplot(plot_df) +
+  geom_histogram(aes(x = unshrunk_value)) +
+  geom_vline(aes(xintercept =shrinkage_point)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster)) +
+  labs(title = 'Unshrunk Value') +
+  theme_classic()
+
+# se: standard error (input into ebci shrinakge)
+ggplot(plot_df) +
+  geom_histogram(aes(x = se)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster)) +
+  scale_x_continuous(limits = c(0, 1)) +
+  labs(title = 'SE', x = 'se (x axis cutoff)') +
+  theme_classic()
+
+
+# distance from shrinkage point
+ggplot(plot_df |> mutate(distance = unshrunk_value - shrinkage_point)) +
+  geom_histogram(aes(x = distance)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster)) +
+  scale_x_continuous(limits = c(0, 1)) +
+  labs(title = 'Distance from shrinkage point', x = 'distance') +
+  theme_classic()
+
+```
+
+## Re-Fit EBCI to double check
+
+```{r}
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+ebci_df = NULL
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  
+  shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
+              filter(train01 == 0) |>
+              select(pvalue, cluster, shrinkage_point, unshrunk_value, se) |>
+              mutate(est_method = est_method,
+                     cl_method  = cl_method)
+  # colnames(shrunk_df)
+  
+  
+  
+  ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                    data    = shrunk_df,  
+                    se = se, weights = 1/se^2, alpha = alpha)
+  # same estimates as the saved ebci_obj
+  # [1] "sceptre kmeans2: mu2 = 0.0120930966, kappa = 13581.8"
+  # [1] "sceptre kmeans3: mu2 = 0.0000000442, kappa = 1015756530743912.2"
+  print(sprintf("%s %s: mu2 = %.10f, kappa = %.1f", 
+                est_method, cl_method,
+                ebci_obj$mu2[1],
+                ebci_obj$kappa[1])) 
+  
+  ebci_df = rbind(ebci_df,
+                  shrunk_df |> 
+                  mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
+                         lower_ci = shrunk_value - ebci_obj$df$len_eb,
+                         upper_ci = shrunk_value + ebci_obj$df$len_eb, 
+                         len_eb = ebci_obj$df$len_eb))
+}
+
+
+
+
+
+```
+
+
+
+```{r}
+ggplot(ebci_df, 
+       aes(x = len_eb, group = cl_method, fill = cl_method)) +
+  geom_histogram(position = 'dodge') +
+  labs(title = 'EBCI CI lengths on SCEPTRE Estimates') +
+  theme_classic()
+```
+
+
+
+## Fit with equal weights (suggested is 1/se**2)
+
+```{r}
+
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+ebci_df = NULL
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  
+  shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
+              filter(train01 == 0) |>
+              select(pvalue, cluster, shrinkage_point, unshrunk_value, se) |>
+              mutate(est_method = est_method,
+                     cl_method  = cl_method)
+  # colnames(shrunk_df)
+  
+  
+  
+  ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                    data    = shrunk_df |> mutate(ones = 1),  
+                    se = se, weights = ones, alpha = alpha)
+  
+  print(sprintf("%s %s: mu2 = %.10f, kappa = %.1f", 
+                est_method, cl_method,
+                ebci_obj$mu2[1],
+                ebci_obj$kappa[1]))
+  
+  ebci_df = rbind(ebci_df,
+                  shrunk_df |> 
+                  mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
+                         lower_ci = shrunk_value - ebci_obj$df$len_eb,
+                         upper_ci = shrunk_value + ebci_obj$df$len_eb, 
+                         len_eb = ebci_obj$df$len_eb))
+}
+
+ggplot(ebci_df, 
+       aes(x = len_eb, group = cl_method, fill = cl_method)) +
+  geom_histogram(position = 'dodge') +
+  labs(title = 'Equally Weighted EBCI CI lengths on SCEPTRE Estimates') +
+  theme_classic()
+
+```
+
+
+
+## Check ebci object fitted parameters
+```{r}
+
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  
+  ebci_obj =  ebci_results[[est_method]][[cl_method]]$ebci_obj
+  # colnames(shrunk_df)
+  
+  # names(ebci_obj)
+  # we care about the estimated mu2 (second moment), first element is the finite 
+  # sample corrected version and kappa (kurtosis), also first element is the 
+  # finite sample corrected version
+  print(sprintf("%s %s: mu2 = %.10f, kappa = %.1f", 
+                est_method, cl_method,
+                ebci_obj$mu2[1],
+                ebci_obj$kappa[1]))
+}
+
+```
+
+
+
+
+
+
+
+
+
+# Testing Shrinkage all at once vs by cluster
+
+
+Maybe shrinking all at once leads to a larger sample size and a smaller estimate of mu2 (doubtful though). This following code compares performing shrinkage on all the estimates at once to performing shrinkage on each cluster individually. The results should not be the exact same, but they will probably be similar. I think they could potentialy be different if there is a large difference in the standard errors and distance from the shrinkage points between clusters (e.g. if cluster 1 is very tight and has small sd vs cluster 2 is very wide and has large sd. Then, this information is all combined when performing shrinkage all at once.)
+
+```{r}
+
+value_colname = 'unshrunk_value'
+se_colname = "se"
+alpha = .1
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+res = list()
+
+for(i in names(chosen_methods)) {
+  # est_method = 'sceptre'
+  # cl_method = 'kmeans3'
+  res[[i]] = list()
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  # df with estimates, se, shrunk estimates, cluster, ...
+  shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
+                filter(train01 == 0) |>
+                mutate(test = factor(test, 
+                                     levels = c('negative', 'positive', 'discovery'))) |>
+                arrange(test)
+  
+  shrunk_df = shrunk_df |> arrange(cluster)
+  
+  # look at what is wrong...
+  # look at the shrinkage
+  res[[i]][['originalShrinkagePlot']] =   plot_shrinkage2(shrunk_df        = shrunk_df,
+                  unshrunk_colname = 'unshrunk_value',
+                  shrunk_colname   = 'shrunk_value',
+                  CIlower_colname  = 'lower_ci',
+                  CIupper_colname  = 'upper_ci',
+                  sample_idx        = 'default subsample',
+                  title            = paste0(method_nice_names[[est_method]], ' + ', cl_method),
+                  legend_position  = c(.81, .12))
+
+  res[[i]][['originalValuesSummary']] = shrunk_df |> group_by(cluster) |>
+    summarize(shrinkage_point = mean(shrinkage_point),
+              shrinkage_point_sd = sd(shrinkage_point), # should be 0
+              unshrunk_mean = mean(unshrunk_value),
+              unshrunk_sd   = sd(unshrunk_value),
+              shrunk_mean = mean(shrunk_value),
+              shrunk_sd   = sd(shrunk_value))
+  
+  # colnames(shrunk_df)
+  # #  [1] "train01"         "test"            "grna"            "gene"           
+  # #  [5] "pvalue"          "pr1"             "pr2"             "pr3"            
+  # #  [9] "cluster"         "shrinkage_point" "unshrunk_value"  "se"             
+  # # [13] "shrunk_value"    "lower_ci"        "upper_ci" 
+  
+  
+
+  
+  
+  ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                    data    = shrunk_df,  
+                    se = se, weights = 1/se^2, alpha = alpha)
+  
+  res[[i]][['ebciObjectAllAtOnce']] = ebci_obj
+  
+  shrunk_values_allatonce = ebci_obj$df$th_eb + shrunk_df$shrinkage_point
+
+  # vs group by group 
+  shrunk_values_bygroup = rep(NA, nrow(shrunk_df))
+  estimated_params_bygroup = list()
+  for(k in 1:3) {
+    k_idx = which(shrunk_df$cluster == k)
+    if(length(k_idx) == 0) {
+      next
+    }
+    ebci_obj_k = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                      data    = shrunk_df[k_idx, ],  
+                      se = se, weights = 1/se^2, alpha = .1)
+    
+    shrunk_values_bygroup[k_idx] = ebci_obj_k$df$th_eb + shrunk_df[k_idx, 'shrinkage_point']
+    estimated_params_bygroup[[k]] = ebci_obj_k[c('mu2', 'kappa', 'delta')]
+    
+    res[[i]][[paste0('ebciObjectByGroup', k)]] = ebci_obj_k
+  }
+  
+  estimated_params_bygroup[['atonce']]  =  ebci_obj[c('mu2', 'kappa', 'delta')]
+  
+  res[[i]][['ebciParams']] = estimated_params_bygroup
+  
+  # compare
+  df = data.frame(unshrunk = shrunk_df$unshrunk_value,
+                  atonce = shrunk_values_allatonce,
+                  bygroup = shrunk_values_bygroup) |>
+       mutate(difference = atonce - bygroup,
+              cluster = shrunk_df$cluster,
+              x = 1:n())
+  
+  
+  
+  res[[i]][['dfCompare']] = df
+  res[[i]][['plotCompare1']] = 
+    ggplot(reshape2::melt(df, id.vars = c('cluster', 'x'))) + 
+      geom_point(aes(x=x, y = value, color = cluster |> factor())) +
+      facet_grid(rows = vars(variable)) + 
+      theme_bw()
+  
+  res[[i]][['plotCompare2']] = 
+    ggplot(df) + 
+        geom_abline(aes(intercept = 0, slope = 1), color = 'gray', alpha = .7) +
+        geom_point(aes(x=atonce, y = bygroup, color = cluster |> factor())) + 
+        theme_bw()
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+```{r}
+# colnames(shrunk_df)
+# #  [1] "train01"         "test"            "grna"            "gene"           
+# #  [5] "pvalue"          "pr1"             "pr2"             "pr3"            
+# #  [9] "cluster"         "shrinkage_point" "unshrunk_value"  "se"             
+# # [13] "shrunk_value"    "lower_ci"        "upper_ci" 
+
+
+value_colname = 'unshrunk_value'
+se_colname = "se"
+alpha = .1
+
+
+ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                  data    = shrunk_df,  
+                  se = se, weights = 1/se^2, alpha = .1)
+
+
+shrunk_values_allatonce = ebci_obj$df$th_eb + shrunk_df$shrinkage_point
+
+# vs group by group 
+shrunk_values_bygroup = rep(NA, nrow(shrunk_df))
+estimated_params_bygroup = list()
+for(k in 1:3) {
+  k_idx = which(shrunk_df$cluster == k)
+
+  ebci_obj_k = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                  data    = shrunk_df[k_idx, ],  
+                  se = se, weights = 1/se^2, alpha = .1)
+  
+  shrunk_values_bygroup[k_idx] = ebci_obj_k$df$th_eb + shrunk_df[k_idx, 'shrinkage_point']
+  estimated_params_bygroup[[k]] = ebci_obj_k[c('mu2', 'kappa', 'delta')]
+}
+
+estimated_params_bygroup[['atonce']]  =  ebci_obj[c('mu2', 'kappa', 'delta')]
+```
+
+
+
+```{r}
+# compare
+df = data.frame(atonce = shrunk_values_allatonce,
+                bygroup = shrunk_values_bygroup) |>
+     mutate(difference = atonce - bygroup,
+            cluster = shrunk_df$cluster,
+            x = 1:n())
+
+ggplot(reshape2::melt(df, id.vars = c('cluster', 'x'))) + 
+  geom_point(aes(x=x, y = value, color = cluster |> factor())) +
+  facet_grid(rows = vars(variable)) + 
+  theme_bw()
+
+# the difference between doing shrinkage all at once or by each cluster is minimal
+plot(shrunk_values_allatonce)
+plot(shrunk_values_bygroup)
+plot(df$difference)
+
+
+```
+
+
+
+
+
+```{r}
+
+names(res[['1']])
+
+# compare parameters
+param_list = list()
+for(i in names(chosen_methods)) {
+  
+  param_list[[paste0(i)]] = res[[i]]$ebciParams$atonce
+  # plot_list[[paste0(i, '2')]] = res[[i]][['plotCompare1']]
+}
+
+
+```
+
+
+```{r}
+
+# compare plots
+plot_list = list()
+for(i in names(chosen_methods)) {
+  
+  plot_list[[paste0(i, '1')]] = res[[i]][['plotCompare1']]
+  plot_list[[paste0(i, '2')]] = res[[i]][['plotCompare1']]
+}
+
+gridExtra::grid.arrange(grobs = plot_list, nrow = 2)
+```
+
+
+
+

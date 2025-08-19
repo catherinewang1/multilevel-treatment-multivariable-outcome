@@ -32,6 +32,10 @@ plots/se/shrinkage/*
 /notebooks/shrinkEstimates_files/
 /notebooks/shrinkEstimates.log
 
+
+# README rendered to html
+README.html
+
 # History files
 .Rhistory
 .Rapp.history

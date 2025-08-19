@@ -62,22 +62,44 @@ EBCI Shrinkage on SCEPTRE + GLM (w/ kmeans and mixture model clustering)
 
 
 
-## Plot Results
+## Plot Results (weight is $1/se^2$)
 
 
 ### Plot Clustering
 
-![clustering](plots/cellsamplesplit/clustering/clustering_all.png "Clustering")
+![clustering](plots/se/cluster/cluster_all.png "Clustering")
 
 ### Plot Clustering (probabilities)
 
 
-![cluster probability](plots/cellsamplesplit/clustering/cluster_probability.png "Cluster Probability")
+![cluster probability](plots/se/cluster/cluster_probability.png "Cluster Probability")
 
 ### Plot Shrinkage
 
-![Shrinkage](plots/cellsamplesplit/shrinkage/shrinkage_all.png "Shrinkage")
+![Shrinkage](plots/se/shrinkage/shrinkage_all.png "Shrinkage")
 
 ### Plot Rejection Rates
 
-![Rejection Rates](plots/cellsamplesplit/rejection_rates_tstat_shrinkage.png "Rejection Rates")
+![Rejection Rates](plots/se/rejection_rates.png "Rejection Rates")
+
+
+
+## Plot Results (equal weight)
+
+
+### Plot Clustering
+
+![clustering](plots/equal/cluster/cluster_all.png "Clustering")
+
+### Plot Clustering (probabilities)
+
+
+![cluster probability](plots/equal/cluster/cluster_probability.png "Cluster Probability")
+
+### Plot Shrinkage
+
+![Shrinkage](plots/equal/shrinkage/shrinkage_all.png "Shrinkage")
+
+### Plot Rejection Rates
+
+![Rejection Rates](plots/equal/rejection_rates.png "Rejection Rates")

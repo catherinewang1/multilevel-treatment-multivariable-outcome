@@ -240,7 +240,9 @@ cluster_and_ebci_w_split <- function(df_cluster, df_shrink,
   # rm(shrinkage_point_test,  classification_test,  cl_prob_matrix_test); gc(verbose = FALSE)
   
   # === Shrinkage
-  df_shrink = df_shrink[se_colname > se_threshold, ]  # remove tests with too small se
+  # df_shrink = df_shrink[se_colname > se_threshold, ]  # remove tests with too small se
+  # replace se of tests with too small se: se = min(se, threshold)
+  df_shrink[se_colname < se_threshold, se_colname] = se_threshold
   
   # if(is.na(ebci_formula)) {
   #   ebci_formula = 'tstat - shrinkage_point ~ 0'

@@ -219,7 +219,7 @@ for(est_method in c('sceptre', 'poisson', 'nb')) {
 t0 = Sys.time()
 
 ALPHA = .1
-SE_THRESHOLD = .0001
+SE_THRESHOLD = .02
 OTHER_COVARIATES = c('test', 'grna', 'gene', 'pvalue')
 
 VALUE_COLNAME = 'estimate'
@@ -639,7 +639,8 @@ ggplot(rejection_rates,
   geom_col(alpha = .9, color = 'black', position = 'dodge') +
   geom_hline(aes(yintercept = .1), color = 'black', linetype = 'dashed') +
   labs(title = 'Rejection Rates',
-       subtitle = 'clustering + ebci shrinkage on estimate',
+       # subtitle = sprintf('%s, test: %.6f', weights_name, rejection_rates[10, 7]),
+       # subtitle = 'clustering + ebci shrinkage on estimate',
        y = 'rejection rate', fill = 'test type') +
   scale_fill_discrete(type = c('darkgreen', 'firebrick', 'gold3')) +
   scale_y_continuous(breaks = seq(from = 0, to = 1, by = .1)) +

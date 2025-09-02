@@ -83,7 +83,8 @@ sceptre_obj_train$sceptre_object =
                   discovery_pairs = my_discovery_pairs,
                   positive_control_pairs = my_positive_control_pairs,
                   save_dir_name = '../saves/sceptre/trainsplit',
-                  save_obj_name = '../saves/sceptre/sceptre_object_train.rds' )
+                  save_obj_name = '../saves/sceptre/sceptre_object_train.rds',
+                  parallel=TRUE)
 
 
 sceptre_obj_test$sceptre_object = 
@@ -91,14 +92,16 @@ sceptre_obj_test$sceptre_object =
                   discovery_pairs = my_discovery_pairs,
                   positive_control_pairs = my_positive_control_pairs,
                   save_dir_name = '../saves/sceptre/testsplit',
-                  save_obj_name = '../saves/sceptre/sceptre_object_test.rds' )
+                  save_obj_name = '../saves/sceptre/sceptre_object_test.rds',
+                  parallel=TRUE)
 
 sceptre_obj_all$sceptre_object = 
   perform_sceptre(sceptre_object = sceptre_obj_all$sceptre_object, 
                   discovery_pairs = my_discovery_pairs,
                   positive_control_pairs = my_positive_control_pairs,
                   save_dir_name = '../saves/sceptre/nosplit',
-                  save_obj_name = '../saves/sceptre/sceptre_object_all.rds' )
+                  save_obj_name = '../saves/sceptre/sceptre_object_all.rds',
+                  parallel=TRUE)
 
 
 # get effect estimates and se (inferred from pval)

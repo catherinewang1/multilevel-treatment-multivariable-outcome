@@ -1,6 +1,11 @@
 # code from shrinkEstimates.qmd but in .r file to run it more easily
 
+# =================== Start ========================================================================
+print(sprintf("[%s] START: SCEPTRE to get effect sizes", Sys.time()))
 
+
+# =================== load ====================================================
+print(sprintf("[%s]    - load libraries and data", Sys.time()))
 suppressPackageStartupMessages(library(dplyr))
 # devtools::install_github("katsevich-lab/sceptre")
 suppressPackageStartupMessages(library(sceptre))
@@ -13,10 +18,9 @@ clearyrds = readRDS('../../../genData/cleary/GSM6858447_KO_conventional.rds')
 
 
 
+# =================== SCEPTRE ====================================================
 
-
-
-
+print(sprintf("[%s]    - start SCEPTRE", Sys.time()))
 
 t0 = Sys.time() 
 
@@ -114,5 +118,7 @@ t1 = Sys.time(); print(t1 - t0)
 
 
 
+# =================== END ==========================================================================
+print(sprintf("[%s] END", Sys.time()))
 
 

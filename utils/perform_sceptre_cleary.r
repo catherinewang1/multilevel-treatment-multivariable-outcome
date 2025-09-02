@@ -294,9 +294,11 @@ create_discovery_pairs <- function(grna_target_data_frame,
 #' @param positive_control_pairs (dataframe) of positive controls
 #' @param save_dir_name (string) path to save sceptre info
 #' @param save_obj_name (string) filename to save sceptre object
+#' @param parallel (boolean) run sceptre command's parallel arg
 perform_sceptre <- function(sceptre_object, discovery_pairs, positive_control_pairs,
                             save_dir_name = '../saves/sceptre/default',
-                            save_obj_name = '../saves/sceptre/default/sceptre_object_test.rds') {
+                            save_obj_name = '../saves/sceptre/default/sceptre_object_test.rds',
+                            parallel=TRUE) {
   
   
   # # construct positive grna-gene pairs to analyze
@@ -347,7 +349,7 @@ perform_sceptre <- function(sceptre_object, discovery_pairs, positive_control_pa
     set_analysis_parameters(discovery_pairs = discovery_pairs, 
                             positive_control_pairs = positive_control_pairs,
                             side = "both") |>
-    assign_grnas(parallel = TRUE,
+    assign_grnas(parallel = parallel,
                  method = 'maximum', 
                  min_grna_n_umis_threshold = 1, 
                  umi_fraction_threshold = .8) |>
@@ -356,13 +358,13 @@ perform_sceptre <- function(sceptre_object, discovery_pairs, positive_control_pa
   
   
   sceptre_object = sceptre_object |>
-    run_calibration_check()
+    run_calibration_check(parallel=parallel)
   
   sceptre_object = sceptre_object |>
-    run_power_check()
+    run_power_check(parallel=parallel)
   
   sceptre_object = sceptre_object  |>
-    run_discovery_analysis()
+    run_discovery_analysis(parallel=parallel)
   
   
   

@@ -204,10 +204,24 @@ prepare_sceptre <- function(seurat_obj, cell_subset=NULL, seed=12345) {
 #' @param NUM_GRNA (integer) how many grna (perturbation)s do we consider
 #'                 default NULL will use all grna's
 #' @param seed (integer) seed for rng
+#' @param all_combos (boolean) if true, choose randomly NUM_GRNA grnas and 
+#'  NUM_GENES_PER_GRNA genes. Then choose all combinations to fill a full
+#'  NUM_GRNA x NUM_GENES_PER_GRNA matrix 
+#' @param must_include_grna (vector) if all_combos=TRUE
+#' @param must_include_gene (vector) if all_combos=TRUE
+#' @param prioritize_genes (vector) if all_combos=TRUE, then fill remaining 
+#'  genes with top genes of these genes (input is given in order of importance)
+#'  potential bug if this does not include enough genes (e.g. result will not 
+#'  give the specified number of NUM_GENES_PER_GRNA and/or bug out, index out
+#'  of bounds)
 create_discovery_pairs <- function(grna_target_data_frame, 
                                    response_names,
                                    NUM_GENES_PER_GRNA=10, NUM_GRNA=NULL,
-                                   seed = 12345) {
+                                   seed = 12345, 
+                                   all_combos = FALSE,
+                                   must_include_grna = NULL,
+                                   must_include_gene = NULL,
+                                   prioritize_genes  = NULL) {
   
   assertthat::assert_that(is.null(NUM_GRNA) || (NUM_GRNA > 0 && NUM_GRNA%%1 == 0),
                           msg = "NUM_GRNA must be NULL or a positive integer")
@@ -225,15 +239,49 @@ create_discovery_pairs <- function(grna_target_data_frame,
   
   if(is.null(NUM_GRNA)) {NUM_GRNA = length(possible_grnas) } # ~600
   
-  discovery_pairs = NULL
-  for(i in 1:NUM_GRNA) {
-    discovery_pairs = rbind(discovery_pairs,
-                            data.frame(grna_target = possible_grnas[i], 
-                                       response_id = sample(x    = setdiff(response_names, possible_grnas[i]), 
-                                                            size = NUM_GENES_PER_GRNA, replace = FALSE)))
+  if(all_combos) {
+    # choose grnas
+    if(is.null(must_include_grna)) {
+      chosen_grna  = sample(x = possible_grnas, size = NUM_GRNA, replace = FALSE)
+    } else {
+      chosen_grna = c(must_include_grna,
+                      sample(x = setdiff(possible_grnas, must_include_grna), 
+                             size = NUM_GRNA - length(must_include_grna), replace = FALSE))
+    }
+    
+    # choose genes
+    chosen_genes = c()
+    if(!is.null(must_include_gene)) {
+      chosen_genes = c(chosen_genes, must_include_gene)
+    } 
+    
+    if(is.null(prioritize_genes)) {
+      chosen_genes = c(chosen_genes, 
+                       sample(x = setdiff(response_names, chosen_genes), 
+                              size = NUM_GENES_PER_GRNA, 
+                              replace = FALSE))
+    } else {
+      chosen_genes = c(chosen_genes, 
+                       (setdiff(prioritize_genes, chosen_genes))[1:(NUM_GENES_PER_GRNA - length(chosen_genes))])
+    }
+    
+    # combine arrange in dataframe (row=(grna, gene))
+    discovery_pairs = data.frame(
+      grna_target = rep(chosen_grna,  each = length(chosen_genes)),
+      response_id = rep(chosen_genes, times = length(chosen_grna))
+    )
+    
+  } else {
+    discovery_pairs = NULL
+    for(i in 1:NUM_GRNA) {
+      discovery_pairs = rbind(discovery_pairs,
+                              data.frame(grna_target = possible_grnas[i], 
+                                         response_id = sample(x    = setdiff(response_names, possible_grnas[i]), 
+                                                              size = NUM_GENES_PER_GRNA, replace = FALSE)))
+    }
+    # discovery_pairs[which(! discovery_pairs$grna_target %in% grna_target_data_frame$grna_target), ]
   }
-  # discovery_pairs[which(! discovery_pairs$grna_target %in% grna_target_data_frame$grna_target), ]
-  
+
   return(discovery_pairs)
 }
 
@@ -387,8 +435,8 @@ construct_sceptre_effects_df <- function(sceptre_object,
                           sceptre_object@power_result |> mutate(test = 'positive') |> relocate(test),
                           sceptre_object@discovery_result |> mutate(test = 'discovery') |> relocate(test), 
                           fill = TRUE) |>
-    rename(estimate = log_2_fold_change) |>
-    filter(pass_qc)
+    rename(estimate = log_2_fold_change) # |>
+    # filter(pass_qc)
   
   sceptre_effects$se = 
     mapply(FUN = get_se, 

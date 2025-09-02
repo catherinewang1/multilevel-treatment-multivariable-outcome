@@ -2,6 +2,8 @@
 title: "checkEBCI"
 format: html
 editor: source
+toc: true
+toc-depth: 2
 ---
 
 
@@ -24,9 +26,12 @@ source('../utils/cluster_and_ebci_shrinkage.r')
 
 ebci_results = readRDS('../saves/cluster_and_ebci_results_cellsamplesplit.rds')
 
+ebci_results = ebci_results[['1/se**2']]
+
 method_nice_names = list('sceptre'='SCEPTRE',
                          'poisson'='Poisson',
                          'nb'     ='Negative Binomial')
+alpha = .1
 ```
 
 
@@ -42,8 +47,12 @@ We focus on SCEPTRE with kmeans 2 vs kmeans 3 clusters. kmeans with 2 clusters s
 
 
 ```{r}
+# chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+#                       '2' = c('sceptre', 'kmeans3'))
 chosen_methods = list('1' = c('sceptre', 'kmeans2'),
-                      '2' = c('sceptre', 'kmeans3'))
+                      '2' = c('sceptre', 'kmeans3'),
+                      '3' = c('sceptre', 'myKmeans2'),
+                      '4' = c('sceptre', 'myKmeans3'))
 
 len_eb_df = NULL
 for(i in names(chosen_methods)) {
@@ -86,7 +95,8 @@ for(i in names(chosen_methods)) {
   
   shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
               filter(train01 == 0) |>
-              select(pvalue, cluster, shrinkage_point, unshrunk_value, se) |>
+              select(pvalue, cluster, shrinkage_point, unshrunk_value, shrunk_value, se, 
+                     lower_ci, upper_ci) |>
               mutate(est_method = est_method,
                      cl_method  = cl_method)
   # colnames(shrunk_df)
@@ -114,6 +124,17 @@ ggplot(plot_df) +
   theme_classic()
 
 
+
+# 1/se**2: potential weight choice
+ggplot(plot_df) +
+  geom_histogram(aes(x = 1/se**2)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster)) +
+  scale_x_continuous(limits = c(0, 1)) +
+  labs(title = '1/SE**2', x = '1/se**2 (x axis cutoff)') +
+  theme_classic()
+
+
 # distance from shrinkage point
 ggplot(plot_df |> mutate(distance = unshrunk_value - shrinkage_point)) +
   geom_histogram(aes(x = distance)) +
@@ -123,7 +144,96 @@ ggplot(plot_df |> mutate(distance = unshrunk_value - shrinkage_point)) +
   labs(title = 'Distance from shrinkage point', x = 'distance') +
   theme_classic()
 
+# CI length
+ggplot(plot_df |> mutate(ci_length = upper_ci - lower_ci)) +
+  geom_histogram(aes(ci_length)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster)) +
+  scale_x_continuous(limits = c(-.1, 1)) +
+  labs(title = 'CI length', x = 'CI length') +
+  theme_classic()
+
+
+# unshrunk vs shrunk values
+ggplot(plot_df, 
+       aes(x = unshrunk_value, 
+           y = shrunk_value)) +
+  geom_abline(aes(slope = 1, intercept = 0), color = 'gray35') +
+  geom_point(size = 1, alpha = .6) +
+  scale_y_continuous(limits = c(-.7, .5)) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster), scale='free') +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank())
+
+
+sample_idx = seq(from = 0, to = nrow(plot_df), length.out = 1000) |> round()
+ggplot(plot_df |>
+               # slice(seq(from = 1, to = n(), by = floor(n()/400))) |>
+               slice(sample_idx) |>
+               arrange(cl_method, cluster) |>
+               mutate(# test = factor(test, levels = c('negative', 'positive', 'discovery')),
+                      x = 1:n()),
+             aes(x = x)) +
+    # geom_point(aes(y = lower_ci) )+
+    # geom_point(aes(y = upper_ci)) +
+    # geom_point(aes(y = -1.5, color = cluster)) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_segment(aes(y = lower_ci, yend = upper_ci),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    # geom_segment(aes(y = unshrunk_value, yend = .99 * shrunk_value + .01 * unshrunk_value),
+    #              lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+    #              linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    geom_point(aes(y = unshrunk_value), color = 'deepskyblue2', shape = 0, size = 1) +
+    geom_point(aes(y = shrunk_value),   color = 'deepskyblue2', shape = 4, size = 1) +
+    geom_point(aes(y = shrinkage_point), color = 'orange', shape = '-', size = 3) +
+    scale_x_continuous(expand = c(0, 0), breaks = seq(0, 1000, by = 100),
+                       # limits = c(1, 90)) +
+                       # limits = c(65, 175)) +
+                       # limits = c(95, 400)) +
+                       # limits = c(1, 400)) +
+    ) +
+    scale_y_continuous(expand = c(0.025, 0)) +
+    # coord_cartesian(ylim = c(-2, 2)) +
+    coord_cartesian(ylim = c(-.2, .2)) + # very zoomed in
+    # scale_color_discrete(type = c('darkgreen', 'firebrick', 'gold3'),
+    #                      guide = guide_legend(direction = 'horizontal')) +
+    facet_grid(cols = vars(cl_method), scales = 'free') +
+    labs(x = 'AY Test', y = '...',
+         title = 'EBCI',
+         subtitle = 'Before and After Robust EBCI') +
+    theme_bw() +
+    theme(panel.grid.minor.x = element_blank()) 
+
 ```
+
+
+
+```{r}
+plot_df |> 
+  mutate(distance = unshrunk_value - shrinkage_point) |>
+  group_by(cl_method, cluster) |> 
+  
+  summarize(distance_sq_mean = mean(distance**2),
+            distance_sq_sd = sd(distance**2),
+            se_mean = mean(se),
+            se_sd   = sd(se), .groups = 'drop')
+
+
+plot_df |> 
+  mutate(distance = unshrunk_value - shrinkage_point) |>
+  group_by(cl_method, cluster) |>
+  # group_by(cl_method) |> 
+  summarize(distance_sq_mean = weighted.mean(distance**2, w = 1/se**2) |> round(5),
+            unweighted_distance_sq_mean = mean(distance**2) |> round(3),
+            # distance_sq_sd = sd(distance**2),
+            se_mean = mean(se) |> round(2),
+            # se_sd   = sd(se), 
+            n = n(),
+            .groups = 'drop') |> knitr::kable(format = "latex")
+```
+
 
 ## Re-Fit EBCI to double check
 
@@ -184,14 +294,22 @@ ggplot(ebci_df,
 
 
 
-## Fit with equal weights (suggested is 1/se**2)
+## Fit with equal weights (prev 1/se**2)
+
+Now CI lengths are reasonable for both kmeans2 and kmeans3. Before kmeans3 had very small CI lengths.
+
+The estimates for $\mu_2$ and $\kappa$ are suspiciously close to each other.
+
+Now, all the estimates basically do not shrink at all? Before kmeans2 shrunk reasonably and kmeans3 shrunk very much to the specified shrinkage point.
+
+
 
 ```{r}
 
 chosen_methods = list('1' = c('sceptre', 'kmeans2'),
                       '2' = c('sceptre', 'kmeans3'))
 
-ebci_df = NULL
+ebci_equal_df = NULL
 for(i in names(chosen_methods)) {
   
   est_method = chosen_methods[[i]][1]
@@ -205,10 +323,11 @@ for(i in names(chosen_methods)) {
                      cl_method  = cl_method)
   # colnames(shrunk_df)
   
-  
-  
+  # estimates are suspiciously close
+  # [1] "sceptre kmeans2: mu2 = 295.1850145509, kappa = 152161.5"
+  # [1] "sceptre kmeans3: mu2 = 295.1850145509, kappa = 152161.6"
   ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
-                    data    = shrunk_df |> mutate(ones = 1),  
+                    data    = shrunk_df |> mutate(ones = 1/n()),  
                     se = se, weights = ones, alpha = alpha)
   
   print(sprintf("%s %s: mu2 = %.10f, kappa = %.1f", 
@@ -216,7 +335,7 @@ for(i in names(chosen_methods)) {
                 ebci_obj$mu2[1],
                 ebci_obj$kappa[1]))
   
-  ebci_df = rbind(ebci_df,
+  ebci_equal_df = rbind(ebci_equal_df,
                   shrunk_df |> 
                   mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
                          lower_ci = shrunk_value - ebci_obj$df$len_eb,
@@ -224,13 +343,196 @@ for(i in names(chosen_methods)) {
                          len_eb = ebci_obj$df$len_eb))
 }
 
-ggplot(ebci_df, 
+
+
+```
+
+
+```{r}
+
+
+ebci_equal_df |>
+  mutate(distance = unshrunk_value - shrinkage_point) |> 
+  group_by(cl_method) |>
+  summarize(sd = sd(distance))
+
+ebci_equal_df  |>
+  mutate(distance2 = (unshrunk_value - shrinkage_point)**2) |> 
+  group_by(cl_method) |>
+  summarize(mean(distance2))
+
+```
+
+
+
+```{r}
+ggplot(ebci_equal_df, 
        aes(x = len_eb, group = cl_method, fill = cl_method)) +
   geom_histogram(position = 'dodge') +
+  scale_x_continuous(limits = c(0, 10)) +
   labs(title = 'Equally Weighted EBCI CI lengths on SCEPTRE Estimates') +
   theme_classic()
 
+
+
+colnames(ebci_equal_df)
+sample_idx = seq(from = 0, to = nrow(ebci_equal_df), length.out = 1000) |> round()
+
+ggplot(ebci_equal_df |>
+               # slice(seq(from = 1, to = n(), by = floor(n()/400))) |>
+               slice(sample_idx) |>
+               arrange(cl_method, cluster) |>
+               mutate(# test = factor(test, levels = c('negative', 'positive', 'discovery')),
+                      x = 1:n()),
+             aes(x = x)) +
+    # geom_point(aes(y = lower_ci) )+
+    # geom_point(aes(y = upper_ci)) +
+    # geom_point(aes(y = -1.5, color = cluster)) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_segment(aes(y = lower_ci, yend = upper_ci),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    # geom_segment(aes(y = unshrunk_value, yend = .99 * shrunk_value + .01 * unshrunk_value),
+    #              lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+    #              linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    geom_point(aes(y = unshrunk_value), color = 'deepskyblue2', shape = 0, size = 3) +
+    geom_point(aes(y = shrunk_value),   color = 'deepskyblue2', shape = 4, size = 3) +
+    geom_point(aes(y = shrinkage_point), color = 'orange', shape = '-', size = 3) +
+    scale_x_continuous(expand = c(0, 0), breaks = seq(0, 1000, by = 10),
+                       # limits = c(1, 90)) +
+                       # limits = c(65, 175)) +
+                       # limits = c(95, 400)) +
+                       # limits = c(1, 400)) +
+    ) +
+    scale_y_continuous(expand = c(0.025, 0), limits = c(-2.5, 2.5)) +
+    # scale_y_continuous(expand = c(0.025, 0), limits = c(-1.5, .75)) +
+    # scale_color_discrete(type = c('darkgreen', 'firebrick', 'gold3'),
+    #                      guide = guide_legend(direction = 'horizontal')) +
+    facet_grid(cols = vars(cl_method), scales = 'free') +
+    labs(x = 'AY Test', y = '...',
+         title = 'Equal Weight EBCI',
+         subtitle = 'Before and After Robust EBCI') +
+    theme_bw() +
+    theme(panel.grid.minor.x = element_blank()) #,
+          # legend.position = 'inside',
+          # legend.position.inside = c(.9, .9),
+          #legend.background = element_rect(color = 'black'))
+
+# unshrunk vs shrunk values
+ggplot(ebci_equal_df, 
+       aes(x = unshrunk_value, 
+           y = shrunk_value)) +
+  geom_abline(aes(slope = 1, intercept = 0), color = 'gray35') +
+  geom_point(size = 1, alpha = .6) +
+  scale_y_continuous(limits = c(-.7, .5)) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster), scale='free') +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank())
 ```
+
+
+
+
+## Fit with 1/se**4
+
+Using the weights $1/se^4$ is supposed to be optimal for the estimation of $\mu_2$. (This fit takes a long time for some reason.)
+
+```{r}
+
+chosen_methods = list('1' = c('sceptre', 'kmeans2'),
+                      '2' = c('sceptre', 'kmeans3'))
+
+ebci_se4_df = NULL
+for(i in names(chosen_methods)) {
+  
+  est_method = chosen_methods[[i]][1]
+  cl_method = chosen_methods[[i]][2]
+  
+  
+  shrunk_df = ebci_results[[est_method]][[cl_method]]$ebci_df |>
+              filter(train01 == 0) |>
+              select(pvalue, cluster, shrinkage_point, unshrunk_value, se) |>
+              mutate(est_method = est_method,
+                     cl_method  = cl_method)
+  # colnames(shrunk_df)
+  
+  ebci_obj = ebci(formula = 'unshrunk_value - shrinkage_point ~ 0', # ebci_formula
+                    data    = shrunk_df,  
+                    se = se, weights = 1/se^4, alpha = alpha)
+  
+  # [1] "sceptre kmeans2: mu2 = 0.0164014485, kappa = 1.0"
+  # [1] "sceptre kmeans3: mu2 = 0.0000010267, kappa = 42.5"
+  print(sprintf("%s %s: mu2 = %.10f, kappa = %.1f", 
+                est_method, cl_method,
+                ebci_obj$mu2[1],
+                ebci_obj$kappa[1]))
+  
+  ebci_se4_df = rbind(ebci_se4_df,
+                  shrunk_df |> 
+                  mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
+                         lower_ci = shrunk_value - ebci_obj$df$len_eb,
+                         upper_ci = shrunk_value + ebci_obj$df$len_eb, 
+                         len_eb = ebci_obj$df$len_eb))
+}
+
+
+
+```
+
+
+
+```{r}
+# len_eb histogram
+ggplot(ebci_se4_df, 
+       aes(x = len_eb, group = cl_method, fill = cl_method)) +
+  geom_histogram(position = 'dodge') +
+  # scale_x_continuous(limits = c(-.1, 10)) +
+  labs(title = '1/se^4 Weighted EBCI len_eb on SCEPTRE Estimates') +
+  theme_classic()
+
+
+
+
+sample_idx = seq(from = 0, to = nrow(ebci_se4_df), length.out = 1000) |> round()
+
+ggplot(ebci_se4_df |>
+               slice(sample_idx) |>
+               arrange(cl_method, cluster) |>
+               mutate(x = 1:n()),
+             aes(x = x)) +
+    geom_hline(aes(yintercept = 0)) +
+    geom_segment(aes(y = lower_ci, yend = upper_ci),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    geom_point(aes(y = unshrunk_value), color = 'deepskyblue2', shape = 0, size = 3) +
+    geom_point(aes(y = shrunk_value),   color = 'deepskyblue2', shape = 4, size = 3) +
+    geom_point(aes(y = shrinkage_point), color = 'orange', shape = '-', size = 3) +
+    scale_x_continuous(expand = c(0, 0), breaks = seq(0, 1000, by = 50)) +
+    scale_y_continuous(expand = c(0.025, 0)) +
+    coord_cartesian(ylim = c(-2, 2)) +
+    # coord_cartesian(ylim = c(-.2, .2)) + # very zoomed in
+    facet_grid(cols = vars(cl_method), scales = 'free') +
+    labs(x = 'AY Test', y = '...',
+         title = '1/se^4 Weight EBCI',
+         subtitle = 'Before and After Robust EBCI') +
+    theme_bw() +
+    theme(panel.grid.minor.x = element_blank()) 
+
+
+# unshrunk vs shrunk values
+ggplot(ebci_se4_df, 
+       aes(x = unshrunk_value, 
+           y = shrunk_value)) +
+  geom_abline(aes(slope = 1, intercept = 0), color = 'gray35') +
+  geom_point(size = 1, alpha = .6) +
+  scale_y_continuous(limits = c(-.7, .5)) +
+  scale_x_continuous(limits = c(-1, 1)) +
+  facet_grid(rows = vars(cl_method), 
+             cols = vars(cluster), scale='free') +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank())
+```
+
 
 
 

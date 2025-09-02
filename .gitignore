@@ -31,7 +31,9 @@ plots/se/shrinkage/*
 # notebook saved files
 /notebooks/shrinkEstimates_files/
 /notebooks/shrinkEstimates.log
-
+/notebooks/checkEBCISim.qmd
+/notebooks/checkEBCISim.html
+/notebooks/checkEBCISim_files/
 
 # README rendered to html
 README.html

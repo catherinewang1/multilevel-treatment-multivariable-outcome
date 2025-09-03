@@ -46,10 +46,10 @@ my_response_names = unique(c(sceptre_obj_train$response_names,
                              sceptre_obj_all$response_names))
 
 # positive tests w/ perturbs > THRESHOLD_CELLS_PER_PERTURB = 150 cells per perturb
-my_positive_control_pairs = construct_positive_control_pairs(sceptre_obj_train$sceptre_object)
-THRESHOLD_CELLS_PER_PERTURB = 150
+my_positive_control_pairs = construct_positive_control_pairs(sceptre_obj_all$sceptre_object)
+THRESHOLD_CELLS_PER_PERTURB = 100
 grna_counts = clearyrds[['perturbations']]$counts |> apply(MARGIN=1, FUN=sum)
-my_positive_control_pairs = my_positive_control_pairs |> filter(grna_target %in% names(grna_counts[grna_counts > THRESHOLD_CELLS_PER_PERTURB])) # now 286
+my_positive_control_pairs = my_positive_control_pairs |> filter(grna_target %in% names(grna_counts[grna_counts > THRESHOLD_CELLS_PER_PERTURB])) # 286 when #cells>150, 450 when >100
 
 
 # # random genes per grna, ~ 9000 ... ~ 21 mins
@@ -61,9 +61,10 @@ my_positive_control_pairs = my_positive_control_pairs |> filter(grna_target %in%
 # vs random genes and grna, take all combos: 200 x 100 = 20000 tests, 34 mins
 # 500 x 300 = 150000 tests, 3.3 hours
 # 286 x 2000 = 572000 tests...
+# much faster in parallel, can do more: 450 grnas x 3000 genes
 my_discovery_pairs = create_discovery_pairs(grna_target_data_frame = my_grna_target_data_frame, 
                                             response_names = my_response_names,
-                                            NUM_GENES_PER_GRNA=2000, NUM_GRNA=nrow(my_positive_control_pairs),
+                                            NUM_GENES_PER_GRNA=3000, NUM_GRNA=nrow(my_positive_control_pairs),
                                             seed = 12345, 
                                             all_combos = TRUE,
                                             must_include_grna = my_positive_control_pairs$grna_target,

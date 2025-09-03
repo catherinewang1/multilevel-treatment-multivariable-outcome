@@ -69,7 +69,12 @@ my_discovery_pairs = create_discovery_pairs(grna_target_data_frame = my_grna_tar
                                             all_combos = TRUE,
                                             must_include_grna = my_positive_control_pairs$grna_target,
                                             must_include_gene = my_positive_control_pairs$response_id,
-                                            prioritize_genes = gene_dev_df$gene_name)
+                                            prioritize_genes = gene_dev_df |> arrange(desc(deviance)) |> pull(gene_name))
+
+write.csv(my_positive_control_pairs, '../saves/sceptre/positive_control_pairs.csv', row.names = FALSE)
+write.csv(my_discovery_pairs       , '../saves/sceptre/discovery_pairs.csv'       , row.names = FALSE)
+
+
 # dim(my_discovery_pairs)
 # dim(my_discovery_pairs |> distinct())
 # my_discovery_pairs |> group_by(grna_target) |> summarize(count = n()) |> pull(count) |> unique()

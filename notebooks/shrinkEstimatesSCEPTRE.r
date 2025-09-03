@@ -64,7 +64,7 @@ my_positive_control_pairs = my_positive_control_pairs |> filter(grna_target %in%
 # much faster in parallel, can do more: 450 grnas x 3000 genes
 my_discovery_pairs = create_discovery_pairs(grna_target_data_frame = my_grna_target_data_frame, 
                                             response_names = my_response_names,
-                                            NUM_GENES_PER_GRNA=3000, NUM_GRNA=nrow(my_positive_control_pairs),
+                                            NUM_GENES_PER_GRNA=10000, NUM_GRNA=nrow(my_positive_control_pairs),
                                             seed = 12345, 
                                             all_combos = TRUE,
                                             must_include_grna = my_positive_control_pairs$grna_target,

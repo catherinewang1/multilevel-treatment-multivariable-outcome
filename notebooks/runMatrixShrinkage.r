@@ -134,10 +134,6 @@ topgrnas = effects_df |> group_by(grna) |> summarize(sum_effects = sum(abs(estim
   arrange(desc(score)) |> 
   arrange(desc(sum_tstats))
 
-effects_df = effects_df |> filter((gene %in% (topgenes |> arrange(desc(score)) |> head(2000) |> pull(gene)))
-                                  & 
-                                    (grna %in% (topgrnas |> arrange(desc(score)) |> head(50) |> pull(grna))))
-
 
 ### Construct matrices of estimate and se (and others, but not used, plots some in the process)
 # construct matrices (explore toptstat, but use topscore)
@@ -147,9 +143,14 @@ matrices = make_matrices(effects_df = effects_df  |>
                                     (grna %in% (topgrnas |> arrange(desc(sum_tstats)) |> head(50) |> pull(grna)))), 
                          save_plots_filepath = '../plots/matrix/topGeneGrna/toptstat/')
 
+effects_df = effects_df |> filter((gene %in% (topgenes |> arrange(desc(score)) |> head(2000) |> pull(gene)))
+                                  & 
+                                    (grna %in% (topgrnas |> arrange(desc(score)) |> head(50) |> pull(grna))))
+
 
 matrices = make_matrices(effects_df = effects_df, save_plots_filepath = '../plots/matrix/topGeneGrna/topscore/')
 
+stop('Stop after making matrices and plots comparing toptstat vs topscore')
 
 # max se set to more reasonable value (not 999)... idk why this takes long...
 se_mat = apply(X = matrices$se, MARGIN=2,

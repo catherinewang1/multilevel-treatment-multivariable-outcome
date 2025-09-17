@@ -109,6 +109,11 @@ make_matrices <- function(effects_df, save_plots_filepath=NULL) {
 #'         either 'lowrank' or 'sparseSVD' 
 #' @param ranks (vector) of positive integers indicating the ranks
 #' @param save_plots_filepath (string) or NULL for no plots
+#' @param save_individual_rank_plots (boolean) if save_plots_filepath is specified, 
+#'     should e also save plots for every rank individually? 
+#'     if TRUE, saves plots like 'rank=10.pdf'
+#'     if FALSE, does not save plots for every rank, and only saves singular
+#'     values and all ranks together
 #' @param color_limits (vector) of length 2, for the limits of the colors 
 #'     default = c(-2, 2), try to use integers... it looks ugly ow
 #' @param methodParams (list) of other parameters used in the approximation method
@@ -119,7 +124,7 @@ make_matrices <- function(effects_df, save_plots_filepath=NULL) {
 #'        save_plots_filepath = '../plots/matrix/lowrank/estimate/',
 #'        color_limits = c(-2, 2)
 #' )
-approx_matrix <- function(mat, method, ranks, save_plots_filepath=NULL, color_limits = c(-2, 2), methodParams=NULL) {
+approx_matrix <- function(mat, method, ranks, save_plots_filepath=NULL, save_individual_rank_plots=FALSE, color_limits = c(-2, 2), methodParams=NULL) {
   
   
   # mat = matrices$estimates|> as.matrix() 
@@ -236,29 +241,31 @@ approx_matrix <- function(mat, method, ranks, save_plots_filepath=NULL, color_li
       plot_df = merge(gene_index, plot_df, by = 'gene')
       plot_df = merge(grna_index, plot_df, by = 'grna')
       
-      # one plot at a time
-      ggplot(plot_df) +
-        geom_raster(aes(x = grna_idx, y = gene_idx, fill = value)) +
-        scale_x_continuous(expand = c(0, 0)) +
-        scale_y_continuous(expand = c(0, 0)) +
-        labs(x='grna', y = 'gene', fill = NULL) +
-        scale_fill_gradient2(limits = color_limits, # set color limits
-                             oob=scales::squish, # if outside lims, set to limits
-                             midpoint = 0, 
-                             high = myRed, low = myBlue, mid = 'white',
-                             breaks = color_breaks,
-                             labels = color_breaks_label) +
-        facet_wrap(vars(group), nrow=1) +
-        theme_bw() +
-        theme(strip.background = element_rect(fill = 'white'), 
-              axis.ticks = element_blank(), 
-              axis.text = element_blank(), 
-              legend.position = 'bottom',
-              legend.key.height = unit(.3, 'cm'),
-              legend.key.width  = unit(1, 'cm'),
-              legend.text = element_text(size = 7))
-      
-      ggsave(sprintf('%s/rank=%02d.pdf', save_plots_filepath, r), height = 6, width = 3)
+      # one plot at a time (individual plots for eah rank)
+      if(save_individual_rank_plots) {
+        ggplot(plot_df) +
+          geom_raster(aes(x = grna_idx, y = gene_idx, fill = value)) +
+          scale_x_continuous(expand = c(0, 0)) +
+          scale_y_continuous(expand = c(0, 0)) +
+          labs(x='grna', y = 'gene', fill = NULL) +
+          scale_fill_gradient2(limits = color_limits, # set color limits
+                               oob=scales::squish, # if outside lims, set to limits
+                               midpoint = 0, 
+                               high = myRed, low = myBlue, mid = 'white',
+                               breaks = color_breaks,
+                               labels = color_breaks_label) +
+          facet_wrap(vars(group), nrow=1) +
+          theme_bw() +
+          theme(strip.background = element_rect(fill = 'white'), 
+                axis.ticks = element_blank(), 
+                axis.text = element_blank(), 
+                legend.position = 'bottom',
+                legend.key.height = unit(.3, 'cm'),
+                legend.key.width  = unit(1, 'cm'),
+                legend.text = element_text(size = 7))
+        
+        ggsave(sprintf('%s/rank=%02d.pdf', save_plots_filepath, r), height = 6, width = 3)
+      }
       
       
       plot_df_all = rbind(plot_df_all, plot_df)

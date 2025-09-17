@@ -208,7 +208,7 @@ approx_matrix <- function(mat, method, ranks, save_plots_filepath=NULL, save_ind
            title = 'Singular Values') +
       theme_bw() +
       theme(panel.grid.minor = element_blank())
-    ggsave(sprintf('%s/singularvalues.pdf', save_plots_filepath), height = 4, width = 6)
+    ggsave(sprintf('%s/singvals.pdf', save_plots_filepath), height = 4, width = 6)
     
   }
   
@@ -494,5 +494,53 @@ shrink_matrix_plots <- function(df) {
   return(plots)
   
 }
+
+
+
+
+
+#' reorder matrix rows and columns to a specified order 
+#' (created for reordering test matrices to train matrices order or just
+#'  to the same order)
+#' @param mat (matrix) matrix to reorder
+#' @param rorder (vector) of strings of row names 
+#' @param corder (vector) of strings of column order
+#' test = mapply(FUN = my_reorder_rc, mat = matrices, 
+#'               MoreArgs = list(rorder = chosengrnas, corder = chosengenes), 
+#'               SIMPLIFY=FALSE)
+#' 
+#' dim(test)
+#' length(test)
+#' test$estimates |> row.names()
+#' test$estimates |> colnames() |> head(100)
+#' test$estimates[1:10, 1:10]
+#' test$foldchange |> colnames() |> head(100)
+#' # make sure order of ros and cols the same 
+#' for now, just do alphabetical order (chosengrnas and chosengenes)
+#' # make sure the numbers are still the same
+#' matrices_r      =  mapply(FUN = my_reorder_rc, mat = matrices, 
+#'                         MoreArgs = list(rorder = chosengrnas, corder = chosengenes), 
+#'                         SIMPLIFY=FALSE)
+#' matrices_test_r =  mapply(FUN = my_reorder_rc, mat = matrices_test, 
+#'                          MoreArgs = list(rorder = chosengrnas, corder = chosengenes), 
+#'                          SIMPLIFY=FALSE)
+#' 
+#' mean(unlist(as.vector(matrices$estimates))); mean(unlist(as.vector(matrices_r$estimates)))
+#' mean(unlist(as.vector(matrices_test$estimates))); mean(unlist(as.vector(matrices_test_r$estimates)))
+#' mean(unlist(as.vector(matrices$foldchange))); mean(unlist(as.vector(matrices_r$foldchange)))
+#' mean(unlist(as.vector(matrices_test$foldchange))); mean(unlist(as.vector(matrices_test_r$foldchange)))
+my_reorder_rc <- function(mat, rorder, corder) {
+  # first check that the set of rows and cols are the same in mat and the inputs
+  if(!(all(row.names(mat) %in% rorder) & all(rorder %in% row.names(mat)))) {
+    print('Bad mat row names or rorder input')
+  }
+  if(!(all(colnames(mat) %in% corder) & all(corder %in% colnames(mat)))) {
+    print('Bad mat col names or corder input')
+  }
+  
+  # reorder
+  return(mat[rorder, corder])
+}
+
 
 

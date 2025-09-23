@@ -393,6 +393,7 @@ plot_matrix <- function(mat, row_order=NULL, column_order=NULL, color_limits = c
 #' @param shrinkpoint_mat (matrix) of points to shrink to (e.g. lower dim mat)
 #' @param se_mat (matrix) of standard errors for unshrunk matrices' estimates
 #' @param ALPHA (numeric) in [0,1] test level for constructing ebci CI's
+#' @param return_ebci_obj (boolean) whether to return the ebci object  
 #' @output dataframe of shrinkage results with at least the following columns
 #' "grna"            "gene"            "unshrunk_value"  "shrinkage_point" "se"
 #' "shrunk_value"    "lower_ci"        "upper_ci" 
@@ -404,7 +405,8 @@ plot_matrix <- function(mat, row_order=NULL, column_order=NULL, color_limits = c
 shrink_matrix <- function(unshrunk_mat,
                           shrinkpoint_mat,
                           se_mat,
-                          ALPHA) {
+                          ALPHA,
+                          return_ebci_obj=FALSE) {
   
   
   unshrunk       = unshrunk_mat|> as.data.frame() |> 
@@ -446,7 +448,13 @@ shrink_matrix <- function(unshrunk_mat,
     dplyr::mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
                   lower_ci = shrunk_value - ebci_obj$df$len_eb,
                   upper_ci = shrunk_value + ebci_obj$df$len_eb)
-  return(ebci_res)
+  if(return_ebci_obj) {
+    return(list(ebci_res = ebci_res,
+                ebci_obj = ebci_obj))
+  } else {
+    return(ebci_res)
+  }
+  
 }
 
 

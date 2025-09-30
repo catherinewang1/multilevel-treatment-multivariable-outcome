@@ -394,6 +394,7 @@ plot_matrix <- function(mat, row_order=NULL, column_order=NULL, color_limits = c
 #' @param se_mat (matrix) of standard errors for unshrunk matrices' estimates
 #' @param ALPHA (numeric) in [0,1] test level for constructing ebci CI's
 #' @param return_ebci_obj (boolean) whether to return the ebci object  
+#' @param weight_mat (matrix) optional weight matrix for ebci shrinkage, else 1/n()
 #' @output dataframe of shrinkage results with at least the following columns
 #' "grna"            "gene"            "unshrunk_value"  "shrinkage_point" "se"
 #' "shrunk_value"    "lower_ci"        "upper_ci" 
@@ -406,7 +407,8 @@ shrink_matrix <- function(unshrunk_mat,
                           shrinkpoint_mat,
                           se_mat,
                           ALPHA,
-                          return_ebci_obj=FALSE) {
+                          return_ebci_obj=FALSE,
+                          weight_mat=NULL) {
   
   
   unshrunk       = unshrunk_mat|> as.data.frame() |> 
@@ -425,20 +427,31 @@ shrink_matrix <- function(unshrunk_mat,
     tidyr::pivot_longer(cols = 2:(ncol(se_mat)+1), 
                         names_to = 'gene', values_to = 'se')
   
-  
+
   ebci_data = merge(merge(unshrunk, shrinkagepoint, 
                           by = c('grna', 'gene')),
                     se, by = c('grna', 'gene'))
   
-  
+  # add weights 
+  if(!is.null(weight_mat)) {
+    weights_df = weight_mat |> as.data.frame() |> 
+      tibble::rownames_to_column('grna') |> 
+      tidyr::pivot_longer(cols = 2:(ncol(se_mat)+1), 
+                          names_to = 'gene', values_to = 'weight')
+    ebci_data = merge(ebci_data, weights_df,  by = c('grna', 'gene'))
+  } else {
+    ebci_data$weight = 1/nrow(ebci_data)
+  }
   
   # t0 = Sys.time()
   ebci_obj = ebci::ebci(formula = sprintf('%s - shrinkage_point ~ 0', 'unshrunk_value'),
                         # formula = 'tstat - shrinkage_point ~ 0', # ebci_formula
-                        data    = ebci_data, 
+                        data    = ebci_data, # |> dplyr::mutate(my_weights = 1/n()), 
                         # se = eval(parse(text = se_colname)), 
                         # weights =  eval(parse(text = sprintf('1/%s^2', se_colname))), 
+                        # TODO: set weights, prob 1/n
                         se = se,
+                        weights = weight,
                         # weights = 1/nrow(ebci_data),
                         alpha = ALPHA)
   # t1 = Sys.time(); print(t1 - t0)
@@ -549,6 +562,59 @@ my_reorder_rc <- function(mat, rorder, corder) {
   # reorder
   return(mat[rorder, corder])
 }
+
+
+#' Spline that does this:
+#' 
+#'       |                . 
+#'       |              .  <- linear, y=x
+#'       |            .   
+#'epsilon+  -  -  - + <- match 1st deriv
+#'       |        . |
+#'       |      .     <- quadratic
+#' delta +.  .      |
+#'       |
+#'       -----------+
+#'       0          epsilon
+#'        
+#' To ensure the function does not decrease on [0, epsilon],
+#' the parameters must satisfy delta <= epsilon / 2
+#' @param delta (numeric) function parameter
+#' @param epsilon (numeric) function parameter
+#' @example 
+#' x = seq(0, 1, length.out = 200) 
+#' my_spline = make_spline(delta = .3, epsilon = .6) 
+#' plot(x, sapply(X = x, FUN = my_spline), type = 'l')
+#' 
+#' my_spline = make_spline(delta = .3, epsilon = .4) <- bad params
+make_spline <- function(delta, epsilon) {
+  a = (delta / epsilon**2) 
+  b = (1 - 2 * delta / epsilon)
+  fn <- function(x) {
+    if(is.na(x)) {
+      return(x)
+    } else if(x < epsilon) {
+      return(a * x**2 + b * x + delta)
+    } else {
+      return(x)
+    }
+  }
+  return(fn)
+} 
+
+
+
+
+my_spline = make_spline(delta = .01, epsilon = .03)
+
+# create new se values (hopefully more robust)
+spline_se <- function(p, mu) {
+  
+  # x = seq(0, 1, length.out = 200) ; plot(x, sapply(X = x, FUN = my_spline), type = 'l')
+  my_spline(abs(mu)) / my_spline(abs(qnorm(p = (1/2)*p, mean = 0, sd = 1)))
+}
+
+
 
 
 

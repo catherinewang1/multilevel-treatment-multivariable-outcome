@@ -183,16 +183,19 @@ This code is moved to a separate file `shrinkEstimatesSCEPTRE.r` to run on separ
 ## Choose top genes and grna's
 
 ```{r}
+library(dplyr)
 # select top genes and grna
-effects_df = read.csv('../saves/sceptre/sceptre_effects_all.csv') |> filter(test == 'discovery') 
+effects_df = read.csv('../saves/sceptre/sceptre_effects_all.csv') 
+effects_df = effects_df |> filter(test == 'discovery') # | test == 'positive') 
+topgenes = effects_df |> group_by(gene) |> summarize(sum_effects = sum(abs(estimate), na.rm = TRUE)) |> arrange(desc(sum_effects))
+topgrnas = effects_df |> group_by(grna) |> summarize(sum_effects = sum(abs(estimate), na.rm = TRUE)) |> arrange(desc(sum_effects))
 
-topgenes = effects_df |> group_by(gene) |> summarize(sum_effects = sum(abs(fold_change))) |> arrange(desc(sum_effects)) |> head(1000) |> pull(gene)
-topgrnas = effects_df |> group_by(grna) |> summarize(sum_effects = sum(abs(fold_change))) |> arrange(desc(sum_effects)) |> head(100 ) |> pull(grna)
 
+write.csv(topgenes, '../saves/sceptre/topgenes.csv', row.names = FALSE)
+write.csv(topgrnas, '../saves/sceptre/topgrnas.csv', row.names = FALSE)
 
-saveRDS(topgenes, '../saves/topgenes.rds')
-saveRDS(topgrnas, '../saves/topgrnas.rds')
-
+plot(topgenes$sum_effects, type = 'l')
+plot(topgrnas$sum_effects, type = 'l')
 ```
 
 

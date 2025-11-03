@@ -13,6 +13,7 @@ MIN_N_NONZERO_PER_GENE = 175000 # genes must have >= X cells w nonzero counts
 
 # SCEPTRE Params
 PARALLEL=TRUE # sceptre parellel-set true on server
+N_PROCESSORS=16 # threads- number of 'auto'
 
 # ==============================================================================
 #                    Quality Control- grnas and genes
@@ -77,15 +78,15 @@ saveRDS(    grna_mat, sprintf('%s/sceptre/grna_mat.rds',     data_path))
 #                              SCEPTRE
 # ==============================================================================
 
-print(sprintf("[%s] START: SCEPTRE", Sys.time()))
+print(sprintf("[%s] START: SCEPTRE", Sys.time())) # ----------------------------
 
 # START: SCEPTRE on Replogle rpe1 experiment
 library(sceptre)
-library(ondisc)
+# library(ondisc)
 # library(Matrix)
 
 
-print(sprintf("[%s]   - load and prep data", Sys.time()))
+print(sprintf("[%s]   - load and prep data", Sys.time())) # --------------------------------------
 data = anndata::read_h5ad(sprintf('%s/%s', data_path, data_file))
 response_mat = readRDS(sprintf('%s/sceptre/response_mat.rds', data_path))
 grna_mat     = readRDS(sprintf('%s/sceptre/grna_mat.rds',     data_path))
@@ -133,101 +134,125 @@ extra_covariates = data$obs[colnames(response_mat), ] |> dplyr::select(mitoperce
 assertthat::assert_that(all(grna_target_data_frame$grna_id %in% row.names(grna_mat2)))
 
 
-
-# check inputs
-
-# dim(response_mat)
-# row.names(response_mat)
-# response_mat[1:2, 1:20]
-# rowSums(response_mat)
-# dim(grna_mat2)
-# row.names(grna_mat2)
-# rowSums(grna_mat2)
-# head(grna_target_data_frame)
-# head(extra_covariates)
-
-print(sprintf("[%s]   - create SCEPTRE obj", Sys.time()))
-# sceptre
-sceptre_object <- sceptre::import_data(
-  response_matrix        = response_mat,
-  grna_matrix            = grna_mat2,
-  grna_target_data_frame = grna_target_data_frame,
-  moi                    = 'low',
-  extra_covariates       = extra_covariates,
-  response_names         = row.names(response_mat)
-)
-
-print(sprintf("[%s]   - construct positive and discovery pairs", Sys.time()))
+# construct positive pairs
+print(sprintf("[%s]   - construct positive and discovery pairs", Sys.time())) # --------------------------------------
 # positive_control_pairs <- construct_positive_control_pairs(sceptre_object) # <- does not work for some reason
 positive_control_pairs = data.frame(grna_target = row.names(grna_mat),
                                     response_id = row.names(grna_mat)) |> 
   dplyr::filter(grna_target != 'non-targeting') |>
   dplyr::filter(grna_target %in% row.names(response_mat))
 
+# construct discovery pairs
 # discovery_pairs <- construct_cis_pairs(
 #   sceptre_object, 
 #   positive_control_pairs = positive_control_pairs
 # )
+# discovery_pairs<-construct_trans_pairs( # use trans instead of cis!
+#   sceptre_object,
+#   positive_control_pairs = positive_control_pairs
+# )
+# construct discovery pairs- by hand to ensure a matrix of estimates (fill in every entry)- will have positive tests 
+# combine arrange in dataframe (row=(grna, gene))
+chosen_grna = grna_target_data_frame |> dplyr::filter(grna_target != 'non-targeting') |> dplyr::pull(grna_id)
+chosen_genes = row.names(response_mat)
 
-discovery_pairs<-construct_trans_pairs( # use trans instead of cis!
-  sceptre_object,
-  positive_control_pairs = positive_control_pairs
+discovery_pairs = data.frame(
+  grna_target = rep(chosen_grna,  each = length(chosen_genes)),
+  response_id = rep(chosen_genes, times = length(chosen_grna))
 )
+rm(chosen_grna, chosen_genes)
 
 
-print(sprintf("[%s]       + subset pos and disc pairs for testing script", Sys.time()))
-positive_control_pairs = positive_control_pairs |> dplyr::slice_sample(n=300)  # test
-discovery_pairs        = discovery_pairs        |> dplyr::slice_sample(n=1000) 
+print(sprintf("[%s]       + subset pos and disc pairs for testing script", Sys.time())) 
+positive_control_pairs = positive_control_pairs |> dplyr::slice_sample(n=50)  # test
+discovery_pairs        = discovery_pairs        |> dplyr::slice_sample(n=200) 
 
-
-print(sprintf("[%s]   - set analysis params, assign grnas, and run qc", Sys.time()))
-# apply the pipeline functions to the sceptre_object in order
-sceptre_object <- sceptre_object |> # |> is R's base pipe, similar to %>%
-  set_analysis_parameters(discovery_pairs = discovery_pairs, 
-                          positive_control_pairs = positive_control_pairs,
-                          side = "both") |>
-  assign_grnas(parallel = parallel,
-               method = 'maximum', 
-               min_grna_n_umis_threshold = 1, 
-               umi_fraction_threshold = .8) |>
-  run_qc() 
-
-
-print(sprintf("[%s]   - run analysis calibration (negatives)", Sys.time()))
-sceptre_object = sceptre_object |>
-  run_calibration_check(parallel=PARALLEL)
-
-print(sprintf("[%s]   - run analysis power (positives)", Sys.time()))
-sceptre_object = sceptre_object |>
-  run_power_check(parallel=PARALLEL)
-
-print(sprintf("[%s]   - run analysis discovery (discovery)", Sys.time()))
-sceptre_object = sceptre_object  |>
-  run_discovery_analysis(parallel=PARALLEL)
-
-
-
-
-
-print(sprintf("[%s]   - write outputs", Sys.time()))
-print(sprintf("[%s]       + sceptre auto outputs", Sys.time()))
-# Write outputs to directory
-dir.create('../saves/sceptre/replogle/', recursive=TRUE)
-list.files('../saves/sceptre/replogle/outputs/')
-write_outputs_to_directory(
-  sceptre_object = sceptre_object, 
-  directory = '../saves/sceptre/replogle/outputs/'
-)
-
-print(sprintf("[%s]       + positive control and discovery pairs", Sys.time()))
+print(sprintf("[%s]       + save/write positive control and discovery pairs", Sys.time()))
 write.csv(positive_control_pairs, '../saves/sceptre/replogle/positive_control_pairs.csv', row.names = FALSE)
 write.csv(discovery_pairs       , '../saves/sceptre/replogle/discovery_pairs.csv'       , row.names = FALSE)
 
-print(sprintf("[%s]       + sceptre object", Sys.time()))
-saveRDS(sceptre_object, file = '../saves/sceptre/replogle/sceptre_object.rds')
 
 
-print(sprintf("[%s] END", Sys.time()))
+print(sprintf("[%s]   - split cells to train and test", Sys.time())) # --------------------------------------
+# sample split cells for train and test
+set.seed(202511)
+cell_idx = list(all = colnames(response_mat))
+cell_idx[['train']] = sample(colnames(response_mat), floor(ncol(response_mat)/2))
+cell_idx[['test']]  = setdiff(colnames(response_mat), cell_idx[['train']])
+
+
+print(sprintf("[%s]   - SCEPTRE: all, train, test", Sys.time())) # --------------------------------------
+# Here: sample split (perf SCEPTRE 3x: all, train, test)
+for(split in c('all', 'train', 'test')) {
+  print(sprintf("[%s]   - SCEPTRE: %s ", Sys.time(), split))
+  
+  split_cell_idx = cell_idx[[split]]
+  
+  
+  print(sprintf("[%s]       + create SCEPTRE obj", Sys.time()))
+  # sceptre
+  sceptre_object <- sceptre::import_data(
+    response_matrix        = response_mat[, split_cell_idx],
+    grna_matrix            = grna_mat2[, split_cell_idx],
+    grna_target_data_frame = grna_target_data_frame,
+    moi                    = 'low',
+    extra_covariates       = extra_covariates[split_cell_idx, ],
+    response_names         = row.names(response_mat)
+  )
+  
+  
+  
+  print(sprintf("[%s]       + set analysis params, assign grnas, and run qc", Sys.time()))
+  # apply the pipeline functions to the sceptre_object in order
+  sceptre_object <- sceptre_object |> # |> is R's base pipe, similar to %>%
+    set_analysis_parameters(discovery_pairs = discovery_pairs, 
+                            positive_control_pairs = positive_control_pairs,
+                            side = "both") |>
+    assign_grnas(parallel = parallel,
+                 method = 'maximum', 
+                 min_grna_n_umis_threshold = 1, 
+                 umi_fraction_threshold = .8) |>
+    run_qc() 
+  
+  
+  print(sprintf("[%s]       + run analysis calibration (negatives)", Sys.time()))
+  sceptre_object = sceptre_object |>
+    run_calibration_check(parallel=PARALLEL, n_processors = N_PROCESSORS)
+  
+  print(sprintf("[%s]       + run analysis power (positives)", Sys.time()))
+  sceptre_object = sceptre_object |>
+    run_power_check(parallel=PARALLEL, n_processors = N_PROCESSORS)
+  
+  print(sprintf("[%s]       + run analysis discovery (discovery)", Sys.time()))
+  sceptre_object = sceptre_object  |>
+    run_discovery_analysis(parallel=PARALLEL, n_processors = N_PROCESSORS)
+  
+  
+  
+  
+  
+  print(sprintf("[%s]       + write outputs", Sys.time()))
+  print(sprintf("[%s]           - sceptre auto outputs", Sys.time()))
+  # Write outputs to directory
+  dir.create(sprintf('../saves/sceptre/replogle/%s', split), recursive=TRUE)
+  # list.files(sprintf('../saves/sceptre/replogle/%s', split))
+  write_outputs_to_directory(
+    sceptre_object = sceptre_object, 
+    directory = sprintf('../saves/sceptre/replogle/%s/outputs/', split)
+  )
+  
+  
+  print(sprintf("[%s]           - sceptre object", Sys.time()))
+  saveRDS(sceptre_object, file = sprintf('../saves/sceptre/replogle/sceptre_obj_%s.rds', split))
+  
+  
+  
+  
+}
+
+
+print(sprintf("[%s] END", Sys.time())) # ---------------------------------------
+
 
 # ==============================================================================
 
@@ -237,7 +262,106 @@ print(sprintf("[%s] END", Sys.time()))
 # ==============================================================================
 #                              TRASH
 # ==============================================================================
-
+# 
+# 
+# ==============================================================================
+# # Trash: SCEPTRE on all
+# 
+# # check inputs
+# 
+# # dim(response_mat)
+# # row.names(response_mat)
+# # response_mat[1:2, 1:20]
+# # rowSums(response_mat)
+# # dim(grna_mat2)
+# # row.names(grna_mat2)
+# # rowSums(grna_mat2)
+# # head(grna_target_data_frame)
+# # head(extra_covariates)
+# 
+# print(sprintf("[%s]   - create SCEPTRE obj", Sys.time()))
+# # sceptre
+# sceptre_object <- sceptre::import_data(
+#   response_matrix        = response_mat,
+#   grna_matrix            = grna_mat2,
+#   grna_target_data_frame = grna_target_data_frame,
+#   moi                    = 'low',
+#   extra_covariates       = extra_covariates,
+#   response_names         = row.names(response_mat)
+# )
+# 
+# print(sprintf("[%s]   - construct positive and discovery pairs", Sys.time()))
+# # positive_control_pairs <- construct_positive_control_pairs(sceptre_object) # <- does not work for some reason
+# positive_control_pairs = data.frame(grna_target = row.names(grna_mat),
+#                                     response_id = row.names(grna_mat)) |> 
+#   dplyr::filter(grna_target != 'non-targeting') |>
+#   dplyr::filter(grna_target %in% row.names(response_mat))
+# 
+# # discovery_pairs <- construct_cis_pairs(
+# #   sceptre_object, 
+# #   positive_control_pairs = positive_control_pairs
+# # )
+# 
+# discovery_pairs<-construct_trans_pairs( # use trans instead of cis!
+#   sceptre_object,
+#   positive_control_pairs = positive_control_pairs
+# )
+# 
+# 
+# print(sprintf("[%s]       + subset pos and disc pairs for testing script", Sys.time()))
+# positive_control_pairs = positive_control_pairs |> dplyr::slice_sample(n=300)  # test
+# discovery_pairs        = discovery_pairs        |> dplyr::slice_sample(n=1000) 
+# 
+# 
+# print(sprintf("[%s]   - set analysis params, assign grnas, and run qc", Sys.time()))
+# # apply the pipeline functions to the sceptre_object in order
+# sceptre_object <- sceptre_object |> # |> is R's base pipe, similar to %>%
+#   set_analysis_parameters(discovery_pairs = discovery_pairs, 
+#                           positive_control_pairs = positive_control_pairs,
+#                           side = "both") |>
+#   assign_grnas(parallel = parallel,
+#                method = 'maximum', 
+#                min_grna_n_umis_threshold = 1, 
+#                umi_fraction_threshold = .8) |>
+#   run_qc() 
+# 
+# 
+# print(sprintf("[%s]   - run analysis calibration (negatives)", Sys.time()))
+# sceptre_object = sceptre_object |>
+#   run_calibration_check(parallel=PARALLEL, n_processors = N_PROCESSORS)
+# 
+# print(sprintf("[%s]   - run analysis power (positives)", Sys.time()))
+# sceptre_object = sceptre_object |>
+#   run_power_check(parallel=PARALLEL, n_processors = N_PROCESSORS)
+# 
+# print(sprintf("[%s]   - run analysis discovery (discovery)", Sys.time()))
+# sceptre_object = sceptre_object  |>
+#   run_discovery_analysis(parallel=PARALLEL, n_processors = N_PROCESSORS)
+# 
+# 
+# 
+# 
+# 
+# print(sprintf("[%s]   - write outputs", Sys.time()))
+# print(sprintf("[%s]       + sceptre auto outputs", Sys.time()))
+# # Write outputs to directory
+# dir.create('../saves/sceptre/replogle/', recursive=TRUE)
+# list.files('../saves/sceptre/replogle/outputs/')
+# write_outputs_to_directory(
+#   sceptre_object = sceptre_object, 
+#   directory = '../saves/sceptre/replogle/outputs/'
+# )
+# 
+# print(sprintf("[%s]       + positive control and discovery pairs", Sys.time()))
+# write.csv(positive_control_pairs, '../saves/sceptre/replogle/positive_control_pairs.csv', row.names = FALSE)
+# write.csv(discovery_pairs       , '../saves/sceptre/replogle/discovery_pairs.csv'       , row.names = FALSE)
+# 
+# print(sprintf("[%s]       + sceptre object", Sys.time()))
+# saveRDS(sceptre_object, file = '../saves/sceptre/replogle/sceptre_object.rds')
+# 
+# 
+# print(sprintf("[%s] END", Sys.time()))
+# ==============================================================================
 # 
 # 
 # # Trash

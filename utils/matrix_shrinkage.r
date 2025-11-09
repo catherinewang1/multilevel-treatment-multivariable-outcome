@@ -443,6 +443,9 @@ shrink_matrix <- function(unshrunk_mat,
     ebci_data$weight = 1/nrow(ebci_data)
   }
   
+  # remove tests with missing values (using unshrunk_value column - from unshrunk_mat input)
+  ebci_data = ebci_data |> filter(!is.na(unshrunk_value))
+  
   # t0 = Sys.time()
   ebci_obj = ebci::ebci(formula = sprintf('%s - shrinkage_point ~ 0', 'unshrunk_value'),
                         # formula = 'tstat - shrinkage_point ~ 0', # ebci_formula
@@ -476,13 +479,13 @@ shrink_matrix <- function(unshrunk_mat,
 
 
 
-
+#' old
 #' @param df (dataframe) of ebci results, should have the following columns:
 #' "grna"            "gene"            "unshrunk_value"  "shrinkage_point" "se"
 #' "shrunk_value"    "lower_ci"        "upper_ci" 
 #' @output list of plots. you can plot them all together with 
 #'         gridExtra::grid.arrange(grobs = somePlots)
-shrink_matrix_plots <- function(df) {
+shrink_matrix_plots0 <- function(df) {
   
   plots = list()
   
@@ -515,6 +518,315 @@ shrink_matrix_plots <- function(df) {
   return(plots)
   
 }
+
+
+
+#' Plot shrinkage results using saved ebci shrinkage res df
+#' @param shrink_df (dataframe) of ebci results, should have the following columns:
+#' "grna"            "gene"            "unshrunk_value"  "shrinkage_point" "se"
+#' "shrunk_value"    "lower_ci"        "upper_ci" 
+#' @param plot_folder (character) of plot_folder to save to
+#' @param order_rowscols (boolean) whether to order rows and cols or not
+#'     if TRUE, either use grna_index and gene_index to order
+#'              or if those are unspecified, perform marginal hierarchical clustering
+#' @param grna_index (dataframe) specifying grna (row) order. should have 2 columns
+#'     'grna' for grna name, and 'grna_idx' for that grna's index
+#' @param gene_index (dataframe) specifying gene (col) order. should have 2 columns
+#'     'gene' for gene name, and 'gene_idx' for that gene's index
+#' @output list of plots. you can plot them all together with 
+#'         gridExtra::grid.arrange(grobs = somePlots)
+plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grna_index=NULL, gene_index=NULL) {
+  
+  # reorder columns and rows
+  if(order_rowscols) {
+    if(is.null(grna_index) | is.null(gene_index)) { # use given
+      # get an ordering for genes/grna (marginal clustering) ---------------------
+      # shrink_matrix = shrink_df |> # filter(grna_idx %in% 1:400 & gene_idx %in% 1:400) |> 
+      #   dplyr::select(grna, gene, shrunk_value) |>
+      #   tidyr::pivot_wider(names_from = gene, values_from = shrunk_value) |>
+      #   tibble::column_to_rownames(var='grna')
+      
+      mat = shrink_df |> # filter(grna_idx %in% 1:400 & gene_idx %in% 1:400) |> 
+        dplyr::select(grna, gene, unshrunk_value) |>
+        tidyr::pivot_wider(names_from = gene, values_from = unshrunk_value) |>
+        tibble::column_to_rownames(var='grna')
+      matscaled = as.matrix(scale(mat))
+      matscaled[is.nan(matscaled)] = 0
+      row_order = hclust(dist(matscaled))$order
+      column_order = hclust(dist(t(matscaled)))$order
+      grna_index = data.frame(grna = rownames(mat)[row_order],
+                              grna_idx  = 1:nrow(mat))
+      gene_index = data.frame(gene = colnames(mat)[column_order],
+                              gene_idx  = 1:ncol(mat))
+    }  # else use pre-specified ordering 
+    
+  } else {
+    grna_index = data.frame(grna = shrink_df$grna|>unique()|>sort()) |> mutate(grna_idx = 1:n())
+    gene_index = data.frame(gene = shrink_df$gene|>unique()|>sort()) |> mutate(gene_idx = 1:n())
+  }
+  
+  
+  
+  
+  
+  # color breaks for plotting ------------------------------------------------
+  color_limits = c(-2, 2)
+  color_breaks = sort(union(color_limits, seq(from = round(color_limits[1]), to = round(color_limits[2]))))
+  color_breaks_label = color_breaks
+  color_breaks_label[which.min(color_breaks)] = sprintf('<%.1f', min(color_breaks))
+  color_breaks_label[which.max(color_breaks)] = sprintf('>%.1f', max(color_breaks))
+  
+  
+  
+  
+  # add original estimates ---------------------------------------------------
+  # (all the loaded dfs should have these) (2x for plotting)
+  plot_df = rbind(shrink_df |> 
+                    dplyr::mutate(rank = 'shrunk'),
+                  shrink_df |>
+                    dplyr::mutate(rank = 'unshrunk') |>
+                    dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                  shrunk_value    = unshrunk_value, 
+                                  lower_ci        = unshrunk_value - qnorm(.95) * se,
+                                  upper_ci        = unshrunk_value + qnorm(.95) * se) 
+  )
+  
+  # add idx's- (from gene or grna name --> number on the axis)
+  plot_df = merge(gene_index, plot_df, by = 'gene')
+  plot_df = merge(grna_index, plot_df, by = 'grna')
+  
+  
+  plot_df$rank = factor(plot_df$rank, levels = c('unshrunk', 'shrunk'))  
+  
+  
+  
+  # === Heatmap ===
+  
+  # heatmap of diff values side by side
+  plot_df_heatmap =
+    rbind(shrink_df |> dplyr::select(grna, gene, unshrunk_value)  |> dplyr::rename(val =  unshrunk_value) |> dplyr::mutate(type = 'unshrunk'), 
+          shrink_df |> dplyr::select(grna, gene, shrinkage_point) |> dplyr::rename(val = shrinkage_point) |> dplyr::mutate(type = 'shrinkagepoint'), 
+          shrink_df |> dplyr::select(grna, gene, shrunk_value)    |> dplyr::rename(val =    shrunk_value) |> dplyr::mutate(type = 'shrunk'),
+          shrink_df |> dplyr::mutate(significant = (upper_ci <= 0) | (0 <= lower_ci)) |> 
+            dplyr::select(grna, gene, significant)    |> dplyr::rename(val =    significant) |> dplyr::mutate(type = 'significant'))
+  
+  # add true effect if known (e.g. simulations)
+  if('true_effect' %in% colnames(shrink_df)) {
+    plot_df_heatmap =
+      rbind(plot_df_heatmap, 
+            shrink_df |> dplyr::select(grna, gene, true_effect)  |> dplyr::rename(val =  true_effect) |> dplyr::mutate(type = 'trueeffect'))
+    # also add in coverage of true effect
+    plot_df_heatmap =
+      rbind(plot_df_heatmap, 
+            shrink_df |> 
+              dplyr::mutate(true_effect_covered = (lower_ci <= true_effect) & (true_effect <= upper_ci)) |> 
+              dplyr::select(grna, gene, true_effect_covered) |> dplyr::rename(val =  true_effect_covered) |> dplyr::mutate(type = 'trueeffectcovered'))
+    
+    
+  }
+  
+  
+  
+  # add idx's- (from gene or grna name --> number on the axis)
+  plot_df_heatmap = merge(gene_index, plot_df_heatmap, by = 'gene')
+  plot_df_heatmap = merge(grna_index, plot_df_heatmap, by = 'grna')
+  
+  
+  plot_df_heatmap$type = factor(plot_df_heatmap$type, levels = c('trueeffect', 'unshrunk', 'shrinkagepoint', 'shrunk', 'significant', 'trueeffectcovered'))  
+  
+  
+  
+  # plot
+  p_heatmap = ggplot(plot_df_heatmap) +
+    geom_raster(aes(x = grna_idx, y = gene_idx, fill = val)) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(x='grna', y = 'gene', fill = NULL, title = 'Estimates After Shrinking') +
+    scale_fill_gradient2(limits = color_limits, # set color limits
+                         oob=scales::squish, # if outside lims, set to limits
+                         midpoint = 0,
+                         high = myRed, low = myBlue, mid = 'white',
+                         # low  = brewer.pal(n = 9, name = "RdBu")[9],
+                         # high = brewer.pal(n = 9, name = "RdBu")[1],
+                         breaks = color_breaks,
+                         labels = color_breaks_label) +
+    facet_grid(#rows = vars(approxmethod),
+      cols = vars(type)) +
+    theme_bw() +
+    theme(strip.background = element_rect(fill = 'white'), 
+          panel.spacing = unit(.2, 'lines'),
+          axis.ticks = element_blank(), 
+          axis.text = element_blank(), 
+          legend.position = 'bottom', 
+          # legend.key.size = unit(.5, 'cm'),
+          legend.key.height = unit(.3, 'cm'),
+          legend.key.width  = unit(1.75, 'cm'),
+          legend.text = element_text(size = 7))
+  
+  
+  ggsave(plot = p_heatmap, filename = sprintf('%sheatmap.pdf', plot_folder), height = 7, width = 7)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # === Shrinkage Changes ===
+  
+  set.seed(12345)
+  subsample_idx = sample(1:nrow(plot_df), min(10000, nrow(plot_df)))
+  
+  # plot shrunk vs unshrunk
+  p1 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray', alpha = .6) +
+    geom_point(aes(x = unshrunk_value, y = shrunk_value, color = se)) +
+    labs(title = 'Shrunk vs Unshrunk Estimates', x = 'unshrunk', y = 'shrunk') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p1, filename = sprintf('%spoints/shrunkvsunshrunk.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  # plot shrunk vs unshrunk centered
+  p2 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray') +
+    geom_point(aes(x = unshrunk_value - shrinkage_point, y = shrunk_value - shrinkage_point, color = se)) +
+    labs(title = 'Shrunk vs Unshrunk Estimates Centered', x = 'unshrunk - shrinkage point', y = 'shrunk - shrinkage point') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p2, filename = sprintf('%spoints/shrunkvsunshrunkcent.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  # plot unshrunk vs shrinkage point
+  p3 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray') +
+    geom_point(aes(x = shrunk_value, y = shrinkage_point, color = se)) +
+    labs(title = 'Shrinkage Point vs Shrunk Estimates', x = 'shrunk', y = 'shrinkage point') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p3, filename =sprintf('%spoints/shrinkptvsshrunk.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  
+  
+  
+  
+  
+  # === Shrinkage CIs ===
+  set.seed(12345)
+  # get the same gene/grna tests across all methods and ranks (to be better visually, should do to prev plots too)
+  sample_tests = plot_df |> filter(rank == 'unshrunk') |> slice_sample(n = 15) |> select(grna, gene) |> mutate(x = 1:n())
+  plot_df_sample = merge(plot_df, sample_tests, all.x = FALSE, all.y = TRUE)
+  
+  # plot_df_sample |> group_by(approxmethod, rank) |> summarize(count = n()) # should all be nrow(sample_tests)
+  
+  
+  p_CI = ggplot(plot_df_sample # |> filter(rank == 'rank=15' & approxmethod == 'lowrank') #|> 
+                # slice(seq(from = 1, to = n(), by = floor(n()/400))) |>
+                # slice(sample_idx) |>
+                # mutate(# test = factor(test, levels = c('negative', 'positive', 'discovery')),
+                #        x = 1:n()),
+                ,
+                aes(x = x)) +
+    # geom_point(aes(y = lower_ci) )+
+    # geom_point(aes(y = upper_ci)) +
+    # geom_point(aes(y = -1.5)) +
+    # geom_hline(aes(yintercept = 0)) +
+    # ---- Shrunk CIs ---
+    geom_segment(aes(x = x + .25, y = lower_ci, yend = upper_ci),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    # --- Unshrunk CIs ---
+    geom_segment(aes(x = x, 
+                     y    = unshrunk_value - qnorm(.95)*se, 
+                     yend = unshrunk_value + qnorm(.95)*se),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue2') +
+    # geom_segment(aes(y    = eval(parse(text = CIlower_colname)), 
+    #                  yend = eval(parse(text = CIupper_colname))),
+    #              lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    
+    # --- Arrow showing shrinkage
+    geom_segment(aes(x = x, xend = x+.2,
+                     y =    unshrunk_value, 
+                     yend = .99 * shrunk_value + .01 * unshrunk_value),
+                 lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+                 linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    # geom_segment(aes(y = eval(parse(text = unshrunk_colname)), 
+    #                  yend = .99 * eval(parse(text = shrunk_colname)) + 
+    #                    .01 * eval(parse(text = unshrunk_colname))),
+    #              lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+    #              linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    # --- Unshrunk Point---
+    geom_point(aes(x = x      , y = unshrunk_value), color = 'deepskyblue2') +
+    # --- Shrunk Point ---
+    geom_point(aes(x = x + .25, y = shrunk_value), shape=18, color = 'deepskyblue4') +
+    # --- Shrinkage Point---
+    geom_point(aes(x = x + .25, y = shrinkage_point), shape=5, color = 'deepskyblue4') +
+    # geom_point(aes(y = eval(parse(text = unshrunk_colname))), color = 'deepskyblue2') +
+    # geom_point(aes(y = eval(parse(text =   shrunk_colname))), color = 'deepskyblue4') +
+    scale_x_continuous(expand = c(0, 0), breaks = seq(0, 1000, by = 10),
+                       # limits = c(1, 90)) +
+                       # limits = c(65, 175)) +
+                       # limits = c(95, 400)) +
+                       # limits = c(1, 400)) +
+    ) +
+    # scale_y_continuous(expand = c(0.025, 0)) +
+    coord_cartesian(ylim = c(-2, 2)) +
+    labs(x = 'AY Test', y = 'Estimates',
+         title = 'Before and After Robust EBCI') +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_bw() +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_blank(),
+          # legend.position = 'inside',
+          # legend.position.inside = legend_position,
+          legend.background = element_rect(color = 'black'))
+  
+  
+  ggsave(plot = p_CI, filename = sprintf('%spoints/CIs.pdf', plot_folder), height = 6, width = 15)
+  
+  
+  # 90% CI lengths before and after 
+  set.seed(12345)
+  p_CI_len = ggplot(plot_df[sample(x=1:nrow(plot_df), size = min(10000, nrow(plot_df))), ] |> 
+                      mutate(unshrunk_ci_length = 2*qnorm(.95)*se,
+                             shrunk_ci_length = upper_ci - lower_ci)) +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    geom_point(aes(x = unshrunk_ci_length, y = shrunk_ci_length), alpha = .8) +
+    labs(x = 'Unshrunk CI Lengths', y = 'Shrunk CI Lengths', title = 'CI Lengths') +
+    facet_grid(#rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  
+  ggsave(plot = p_CI_len, filename =sprintf('%spoints/CIlen.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  # plot all together
+  pdf(sprintf('%sall.pdf', plot_folder), height = 12, width = 12)
+  gridExtra::grid.arrange(p_heatmap + theme(legend.position = 'right', legend.key.height = unit(1.75, 'cm'), legend.key.width  = unit(.3, 'cm')), 
+                          p1, p2, p3, 
+                          p_CI, p_CI_len, layout_matrix = matrix(c(1, 1, 1,
+                                                                   1, 1, 1,
+                                                                   2, 3, 4,
+                                                                   5, 5, 6), byrow = T, nrow=4))
+  dev.off()
+  
+}
+
+
 
 
 

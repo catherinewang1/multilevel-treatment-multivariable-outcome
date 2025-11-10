@@ -37,19 +37,16 @@ Letting $A=0$ represent the control treatment (a non-targeting perturbation), we
 
 The main steps of this analysis is:
 
-  1. Estimate effect sizes:
+1. Estimate effect sizes:
+  - split sample (cells) into a 'train' or 'test' dataset
+  - SCEPTRE, Barry et al., 2019 [^barry2021] (package: `sceptre`)
 
-    - split sample (cells) into a 'train' or 'test' dataset
-    - SCEPTRE, Barry et al., 2019 [^barry2021] (package: `sceptre`)
+2. Approximate matrix: approximate the initial estimated effects training matrix  
+  - select subset of perturbations and genes with signal and good quality control
+  - we consider a low rank approximation (through singular value decomposition) and a sparse low rank approximation (Witten et al., 2007)[^witten2007] (package: `PMA`)
 
-  2. Approximate matrix: approximate the initial estimated effects training matrix  
-
-    - select subset of perturbations and genes with signal and good quality control
-    - we consider a low rank approximation (through singular value decomposition) and a sparse low rank approximation (Witten et al., 2007)[^witten2007] (package: `PMA`)
-
-  3. Shrink: shrink the test estimated effects to the approximated matris
-
-    - Armstrong et al., 2022 [^armstrong2022] (package: `ebci`)
+3. Shrink: shrink the test estimated effects to the approximated matris
+  - Armstrong et al., 2022 [^armstrong2022] (package: `ebci`)
 
 
 

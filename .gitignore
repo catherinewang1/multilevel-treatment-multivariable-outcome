@@ -28,6 +28,16 @@ plots/se/shrinkage/*
 !plots/se/shrinkage/shrinkage_all.png
 !plots/se/rejection_rates.png 
 
+
+!plots/replogle
+plots/replogle/*
+!plots/replogle/shrink
+plots/replogle/shrink/*
+!plots/replogle/shrink/spSVD03
+plots/replogle/shrink/spSVD03/*
+
+!plots/replogle/shrink/spSVD03/all.png
+
 # notebook saved files
 /notebooks/shrinkEstimates_files/
 /notebooks/shrinkEstimates.log

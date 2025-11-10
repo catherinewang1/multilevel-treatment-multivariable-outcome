@@ -256,6 +256,11 @@ for(split in c('all', 'train', 'test')) {
   rm(effects_df_split, matrices_estimate_split, matrices_se_split); gc()
 }
 
+# save the chosen grna_index and gene_index (ordered collection of grna and gene)
+write.csv(x = gene_index |> select(gene, gene_idx), file=sprintf('%s/gene_index.csv', sceptre_save_path), row.names=FALSE)
+write.csv(x = grna_index |> select(grna, grna_idx), file=sprintf('%s/grna_index.csv', sceptre_save_path), row.names=FALSE)
+
+
 
 
 # ======================================================================================================================================
@@ -586,8 +591,9 @@ write.csv(x = shrinkLowrank$ebci_res, file = sprintf("../saves/replogle/shrinkag
 
 
 
-
-
+# # load gene_index and grna_index df's to save time
+# gene_index = read.csv(sprintf('%s/gene_index.csv', sceptre_save_path))
+# grna_index = read.csv(sprintf('%s/grna_index.csv', sceptre_save_path))
 
 # sparse SVD, rank=3
 plot_folder = '../plots/replogle/shrink/spSVD03/'

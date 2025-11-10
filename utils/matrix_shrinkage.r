@@ -654,6 +654,7 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
       cols = vars(type)) +
     theme_bw() +
     theme(strip.background = element_rect(fill = 'white'), 
+          panel.grid = element_blank(),
           panel.spacing = unit(.2, 'lines'),
           axis.ticks = element_blank(), 
           axis.text = element_blank(), 
@@ -816,6 +817,15 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
   
   # plot all together
   pdf(sprintf('%sall.pdf', plot_folder), height = 12, width = 12)
+  gridExtra::grid.arrange(p_heatmap + theme(legend.position = 'right', legend.key.height = unit(1.75, 'cm'), legend.key.width  = unit(.3, 'cm')), 
+                          p1, p2, p3, 
+                          p_CI, p_CI_len, layout_matrix = matrix(c(1, 1, 1,
+                                                                   1, 1, 1,
+                                                                   2, 3, 4,
+                                                                   5, 5, 6), byrow = T, nrow=4))
+  dev.off()
+  
+  png(sprintf('%sall.png', plot_folder), height = 1000, width = 1000)
   gridExtra::grid.arrange(p_heatmap + theme(legend.position = 'right', legend.key.height = unit(1.75, 'cm'), legend.key.width  = unit(.3, 'cm')), 
                           p1, p2, p3, 
                           p_CI, p_CI_len, layout_matrix = matrix(c(1, 1, 1,

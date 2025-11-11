@@ -7,7 +7,7 @@
 sceptre_save_path = '../saves/sceptre/replogle/'
 plot_path = '../plots/replogle/'
 
-
+ALPHA = .1
 
 # libraries
 suppressPackageStartupMessages(library(dplyr))
@@ -489,7 +489,7 @@ ggsave(plot = p_heatmap, filename = sprintf('%s/sceptre_estimates_lowrank.pdf', 
 #                                                                               ========================================================
 # ======================================================================================================================================
 
-ALPHA = .1
+
 dir.create('../saves/replogle/shrinkage/')
 
 # --------------------------------------------------------------------------------------------------------------------------
@@ -591,6 +591,8 @@ write.csv(x = shrinkLowrank$ebci_res, file = sprintf("../saves/replogle/shrinkag
 
 
 
+
+
 # # load gene_index and grna_index df's to save time
 # gene_index = read.csv(sprintf('%s/gene_index.csv', sceptre_save_path))
 # grna_index = read.csv(sprintf('%s/grna_index.csv', sceptre_save_path))
@@ -600,28 +602,35 @@ plot_folder = '../plots/replogle/shrink/spSVD03/'
 shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
 
 dir.create(sprintf('%s/points/', plot_folder), recursive = T); dir.create(sprintf('%s/heatmaps/', plot_folder))
-plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index)
+plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
 
 # sparse SVD, rank=10
 plot_folder = '../plots/replogle/shrink/spSVD10/'
 shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD10.csv")
 
 dir.create(sprintf('%s/points/', plot_folder), recursive = T); dir.create(sprintf('%s/heatmaps/', plot_folder))
-plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index)
+plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
 
 # lowrank, rank=3
 plot_folder = '../plots/replogle/shrink/lowrank03/'
 shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_lowrank03.csv")
 
 dir.create(sprintf('%s/points/', plot_folder), recursive = T); dir.create(sprintf('%s/heatmaps/', plot_folder))
-plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index)
+plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
 
 # lowrank, rank=10
 plot_folder = '../plots/replogle/shrink/lowrank10/'
 shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_lowrank10.csv")
 
 dir.create(sprintf('%s/points/', plot_folder), recursive = T); dir.create(sprintf('%s/heatmaps/', plot_folder))
-plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index)
+plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
+
+
+
+
+
+
+
 
 
 

@@ -533,9 +533,11 @@ shrink_matrix_plots0 <- function(df) {
 #'     'grna' for grna name, and 'grna_idx' for that grna's index
 #' @param gene_index (dataframe) specifying gene (col) order. should have 2 columns
 #'     'gene' for gene name, and 'gene_idx' for that gene's index
+#' @param unshrunk_ALPHA (numeric) [0,1] level for significance threshold for unshrunk
+#'     (shrunk already specified previously, so match this value)
 #' @output list of plots. you can plot them all together with 
 #'         gridExtra::grid.arrange(grobs = somePlots)
-plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grna_index=NULL, gene_index=NULL) {
+plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grna_index=NULL, gene_index=NULL, unshrunk_ALPHA=.1) {
   
   # reorder columns and rows
   if(order_rowscols) {
@@ -608,7 +610,16 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
           shrink_df |> dplyr::select(grna, gene, shrinkage_point) |> dplyr::rename(val = shrinkage_point) |> dplyr::mutate(type = 'shrinkagepoint'), 
           shrink_df |> dplyr::select(grna, gene, shrunk_value)    |> dplyr::rename(val =    shrunk_value) |> dplyr::mutate(type = 'shrunk'),
           shrink_df |> dplyr::mutate(significant = (upper_ci <= 0) | (0 <= lower_ci)) |> 
-            dplyr::select(grna, gene, significant)    |> dplyr::rename(val =    significant) |> dplyr::mutate(type = 'significant'))
+            dplyr::select(grna, gene, significant)    |> dplyr::rename(val =    significant) |> dplyr::mutate(type = 'shrunksignificant'))
+  # add unshrunk sig if wanted (unshrunk_ALPHA is not null)
+  if(!is.null(unshrunk_ALPHA)) {
+    plot_df_heatmap = rbind(plot_df_heatmap,
+                            shrink_df |> dplyr::mutate(unshrunk_lower_ci = unshrunk_value - qnorm(1-unshrunk_ALPHA/2)*se,
+                                                       unshrunk_upper_ci = unshrunk_value + qnorm(1-unshrunk_ALPHA/2)*se,
+                                                       unshrunk_significant = (unshrunk_upper_ci <= 0) | (0 <= unshrunk_lower_ci)) |>
+                              dplyr::select(grna, gene, unshrunk_significant)    |> dplyr::rename(val =    unshrunk_significant) |> dplyr::mutate(type = 'unshrunksignificant'))
+    
+  }
   
   # add true effect if known (e.g. simulations)
   if('true_effect' %in% colnames(shrink_df)) {
@@ -632,7 +643,7 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
   plot_df_heatmap = merge(grna_index, plot_df_heatmap, by = 'grna')
   
   
-  plot_df_heatmap$type = factor(plot_df_heatmap$type, levels = c('trueeffect', 'unshrunk', 'shrinkagepoint', 'shrunk', 'significant', 'trueeffectcovered'))  
+  plot_df_heatmap$type = factor(plot_df_heatmap$type, levels = c('trueeffect', 'unshrunk', 'unshrunksignificant', 'shrinkagepoint', 'shrunk', 'shrunksignificant', 'trueeffectcovered'))  
   
   
   

@@ -83,6 +83,8 @@ effects[['all']] |> filter(test == 'discovery') |> filter(is.na(estimate))
 #          3. construct effect and se matrices subset and ordered               ========================================================
 # ======================================================================================================================================
 print(sprintf("[%s]     - prep", Sys.time()))
+
+# TODO: Also filter tests based on too large of se's
 # --------------------------------------------------------------------------------------------------------------------------
 # 1. important genes and grnas selected by a 'score'
 effects_df = effects[['all']] |> filter(test == 'discovery') # | test == 'positive') 
@@ -596,6 +598,23 @@ write.csv(x = shrinkLowrank$ebci_res, file = sprintf("../saves/replogle/shrinkag
 # # load gene_index and grna_index df's to save time
 # gene_index = read.csv(sprintf('%s/gene_index.csv', sceptre_save_path))
 # grna_index = read.csv(sprintf('%s/grna_index.csv', sceptre_save_path))
+
+
+# TODO: fix... somehow the  ordered gene and grna sets are not the same as the ones w estimates???
+# test
+shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
+all(grna_index$grna %in% shrink_df$grna) # this should be true... but somehow it is not??
+# reorder for those grna/gene present....
+
+gene_index = gene_index |> filter(gene %in% shrink_df$gene) |> arrange(gene_idx) |> mutate(gene_idx = 1:n())
+grna_index = grna_index |> filter(grna %in% shrink_df$grna) |> arrange(grna_idx) |> mutate(grna_idx = 1:n())
+
+
+
+
+
+# start
+
 
 # sparse SVD, rank=3
 plot_folder = '../plots/replogle/shrink/spSVD03/'

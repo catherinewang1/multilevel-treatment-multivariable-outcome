@@ -328,8 +328,7 @@ sample_tstat_null <- function(B, sj, thetaj0, mu, tau, pi0, T_stat_function) {
                         sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
   }
   
-  tstat_null = sapply(X = Y, FUN = calc_T_stat,
-                      sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
+  
   return(tstat_null)
 }
 
@@ -866,6 +865,19 @@ sim_and_plot(save_folder = paste0(save_folder_overall, "E/"),
              s=5,
              mu=2,
              tau=2,
+             pi0=.3,
+             thetaj0=0,
+             B=10000,
+             num_steps=1000)
+
+# simulation with larger si (s.t. standard has low power), and more distinction between theta_i groups
+set.seed(12345)
+sim_and_plot(save_folder = paste0(save_folder_overall, "F/"), 
+             N=1000, 
+             G=1,
+             s=5,
+             mu=5,
+             tau=1,
              pi0=.3,
              thetaj0=0,
              B=10000,

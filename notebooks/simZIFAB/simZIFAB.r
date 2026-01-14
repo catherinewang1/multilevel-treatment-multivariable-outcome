@@ -85,7 +85,8 @@ est_G_params <- function(Y, S,
                          initial_pi0 = .5) {
   # # test
   # set.seed(12345)
-  # sim_df = sim_values(N=500, G=1, s=1, mu=1, tau=2, pi0=.3)
+  # # sim_df = sim_values(N=500, G=1, s=1, mu=1, tau=2, pi0=.3)
+  # sim_df = sim_values(N=1000, G=1, s=5, mu=3, tau=1, pi0=.3)
   # Y = sim_df$Y
   # S = sim_df$s
   # num_steps = 100
@@ -183,10 +184,17 @@ est_G_params_Estep <- function(y, s, mu, tau, pi0) {
 #' @param P (vector) of probabilities P(Z=0|Y=y) (same length as Y & S)
 est_G_params_Mstep <- function(Y, S, P) {
   normalization = sum(1-P)
+  # print(normalization)
   
   mu = sum((1 - P)*Y) / normalization
   
-  tau = (sum((1-P) * ((Y-mu)^2 - S*S))/normalization) |> sqrt()
+  # sometimes tau^2 ends up negative, put arb threshold to ensure some values
+  tau2 = (sum((1-P) * ((Y-mu)^2 - S*S))/normalization)
+  if(tau2 < 0) {
+    tau = 1/length(Y) #  min(1/n, sqrt(|tau2|))
+  } else {
+    tau = sqrt(tau2)
+  }
   
   pi0 = mean(P)
   
@@ -195,6 +203,47 @@ est_G_params_Mstep <- function(Y, S, P) {
 
 
 
+#' Calculate the test statistic (when G=1, 1 obs per group) with ONLY G_1 on numerator:
+#' T_j = \int L(\theta_j) dP_G_1(\theta_j)
+#'       -------------------------------
+#'             L(\theta_j0)
+#' (likelihood for G>1 will look slightly diff but essentially the same 
+#'  e.g. prob use average and scale the s value)
+#' @param Yj (numeric) Yj value (observed value/estimated theta)
+#' @param sj (numeric) sj value (sd of Y|theta)
+#' @param thetaj0 (numeric) H_0 theta value testing against (typically 0)
+#' @param mu (numeric) estimated mu parameter
+#' @param tau (numeric) estimated tau parameter
+#' @param pi0 (numeric) estimated pi0 parameter
+calc_T_stat_G1 <- function(Yj, sj, thetaj0, mu, tau, pi0) {
+  # # test
+  # set.seed(12345)
+  # sim_df = sim_values(N=50, G=1, s=1, mu=1, tau=2, pi0=.3)
+  # 
+  # Yj = sim_df[1, 'Y']
+  # sj = sim_df[1, 's']
+  # thetaj0 = 0
+  # # test, use true params
+  # mu = 1
+  # tau = 2
+  # pi0 = .3
+  
+  # Calculate Denominator
+  denominator = (1/sj) * exp(-((Yj-thetaj0)^2)/(2*sj^2))
+  
+  # Calculate Numerator
+  # num1 = pi0 * (1/sj) * exp(-(Yj^2)/(2*sj^2))
+  
+  num2a = -(tau^2 * Yj^2 + sj^2 * mu^2 - (tau^2 * Yj + sj^2 * mu)^2 / (tau^2 + sj^2)) / (2 * sj^2 * tau^2)
+  num2b = (1/sqrt(tau^2 + sj^2))
+  # num2 = (1-pi0) * exp(num2a) * num2b
+  num2 = exp(num2a) * num2b
+  
+  numerator = num2
+  
+  # T statistic
+  return(numerator / denominator)
+}
 
 
 #' Calculate the test statistic (when G=1, 1 obs per group):
@@ -209,7 +258,7 @@ est_G_params_Mstep <- function(Y, S, P) {
 #' @param mu (numeric) estimated mu parameter
 #' @param tau (numeric) estimated tau parameter
 #' @param pi0 (numeric) estimated pi0 parameter
-calc_T_stat_one <- function(Yj, sj, thetaj0, mu, tau, pi0) {
+calc_T_stat <- function(Yj, sj, thetaj0, mu, tau, pi0) {
   # # test
   # set.seed(12345)
   # sim_df = sim_values(N=50, G=1, s=1, mu=1, tau=2, pi0=.3)
@@ -251,7 +300,7 @@ calc_T_stat_one <- function(Yj, sj, thetaj0, mu, tau, pi0) {
 #' @param mu (numeric) estimated mu parameter
 #' @param tau (numeric) estimated tau parameter
 #' @param pi0 (numeric) estimated pi0 parameter
-sample_tstat_null <- function(B, sj, thetaj0, mu, tau, pi0) {
+sample_tstat_null <- function(B, sj, thetaj0, mu, tau, pi0, T_stat_function) {
   # # debug
   # set.seed(12345)
   # sim_df = sim_values(N=50, G=1, s=1, mu=1, tau=2, pi0=.3)
@@ -271,7 +320,15 @@ sample_tstat_null <- function(B, sj, thetaj0, mu, tau, pi0) {
   # draw Ys
   Y = rnorm(n = B, mean = thetaj0, sd = sj)
   # calculate tstats when H0:thetaj=thetaj0
-  tstat_null = sapply(X = Y, FUN = calc_T_stat_one,
+  if(T_stat_function == 'G') {
+    tstat_null = sapply(X = Y, FUN = calc_T_stat,
+                        sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
+  } else if(T_stat_function == 'G1') {
+    tstat_null = sapply(X = Y, FUN = calc_T_stat_G1,
+                        sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
+  }
+  
+  tstat_null = sapply(X = Y, FUN = calc_T_stat,
                       sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
   return(tstat_null)
 }
@@ -291,7 +348,7 @@ sample_tstat_null <- function(B, sj, thetaj0, mu, tau, pi0) {
 #' @param mu (numeric) estimated mu parameter
 #' @param tau (numeric) estimated tau parameter
 #' @param pi0 (numeric) estimated pi0 parameter
-est_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0) {
+est_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0, T_stat_function) {
   # # debug
   # set.seed(12345)
   # sim_df = sim_values(N=50, G=1, s=1, mu=1, tau=2, pi0=.3)
@@ -304,7 +361,7 @@ est_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0) {
   # tau = 2
   # pi0 = .3
   # 
-  # t = calc_T_stat_one(Yj=Yj, sj = sj, thetaj0 = thetaj0,
+  # t = calc_T_stat(Yj=Yj, sj = sj, thetaj0 = thetaj0,
   #                     # test, use true params
   #                     mu = mu, tau = tau, pi0 = pi0)
   # B = 10000
@@ -314,11 +371,13 @@ est_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0) {
   # # draw Ys
   # Y = rnorm(n = B, mean = thetaj0, sd = sj)
   # # calculate tstats when H0:thetaj=thetaj0
-  # tstat_null = sapply(X = Y, FUN = calc_T_stat_one,
+  # tstat_null = sapply(X = Y, FUN = calc_T_stat,
   #                     sj=sj, thetaj0=thetaj0, mu=mu, tau=tau, pi0=pi0)
   
+   
+  tstat_null = sample_tstat_null(B, sj, thetaj0, mu, tau, pi0, T_stat_function)
   
-  tstat_null = sample_tstat_null(B, sj, thetaj0, mu, tau, pi0)
+  
   # estimate p-value (empirical distribution)
   phat = mean(tstat_null > tj)
   
@@ -339,9 +398,23 @@ est_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0) {
 #' @param pi0 (numeric)
 #' @param thetaj0 (numeric)
 #' @param B (integer)
+#' @param num_steps (integer) number of EM iteration steps
 sim_and_plot <- function(save_folder,
                          N, G, s, mu, tau, pi0,
-                         thetaj0, B) {
+                         thetaj0, B,
+                         num_steps=100) {
+  # # debug
+  # N=1000 
+  # G=1
+  # s=5
+  # mu=3
+  # tau=1
+  # pi0=.3
+  # thetaj0=0
+  # B=1000
+  # num_steps=1000
+  
+  
   dir.create(save_folder, showWarnings = TRUE)
   
   sim_df = sim_values(N=N, G=G, s=s, mu=mu, tau=tau, pi0=pi0)
@@ -356,14 +429,14 @@ sim_and_plot <- function(save_folder,
   
   # True parameters
   # calculate the T statistic using true parameters
-  Tstat_trueparams = mapply(FUN = calc_T_stat_one,
+  Tstat_trueparams = mapply(FUN = calc_T_stat,
                             Yj = sim_df[ ,'Y'],
                             sj = sim_df[ , 's'], 
                             MoreArgs = list(thetaj0 = thetaj0,
                                             mu      = mu, 
                                             tau     = tau,
                                             pi0     = pi0))
-  
+
   # estimate the p-values (using simulation) using true parameters
   phat_trueparams = mapply(FUN = est_pval,
                            tj = Tstat_trueparams,
@@ -372,13 +445,34 @@ sim_and_plot <- function(save_folder,
                                            thetaj0 = thetaj0,
                                            mu      = mu, 
                                            tau     = tau,
-                                           pi0     = pi0))
+                                           pi0     = pi0,
+                                           T_stat_function='G'))
   
+  # calculate the T statistic w only G1 in the numerator using true parameters
+  TstatG1_trueparams = mapply(FUN = calc_T_stat_G1,
+                              Yj = sim_df[ ,'Y'],
+                              sj = sim_df[ , 's'], 
+                              MoreArgs = list(thetaj0 = thetaj0,
+                                              mu      = mu, 
+                                              tau     = tau,
+                                              pi0     = pi0))
+  
+  # estimate the p-values w only G1 in the numerator (using simulation) using true parameters
+  phatG1_trueparams = mapply(FUN = est_pval,
+                             tj = TstatG1_trueparams,
+                             sj = sim_df[ , 's'], 
+                             MoreArgs = list(B       = B,
+                                             thetaj0 = thetaj0,
+                                             mu      = mu, 
+                                             tau     = tau,
+                                             pi0     = pi0,
+                                             T_stat_function='G1'))
+   
   # Estimated (using EM alg) parameters
   # estimate the prior, G, parameters
   estparams = est_G_params(Y = sim_df[ , 'Y'], 
                            S = sim_df[ , 's'], 
-                           num_steps=100,
+                           num_steps=num_steps,
                            initial_mu = 0,
                            initial_tau = 1,
                            initial_pi0 = .5)
@@ -389,7 +483,7 @@ sim_and_plot <- function(save_folder,
   
   
   # calculate the T statistic using true parameters
-  Tstat_estparams = mapply(FUN = calc_T_stat_one,
+  Tstat_estparams = mapply(FUN = calc_T_stat,
                            Yj = sim_df[ ,'Y'],
                            sj = sim_df[ , 's'], 
                            MoreArgs = list(thetaj0 = thetaj0,
@@ -399,13 +493,34 @@ sim_and_plot <- function(save_folder,
   
   # estimate the p-values (using simulation) using true parameters
   phat_estparams = mapply(FUN = est_pval,
-                          tj = Tstat_trueparams,
+                          tj = Tstat_estparams,
                           sj = sim_df[ , 's'], 
                           MoreArgs = list(B       = B,
                                           thetaj0 = thetaj0,
                                           mu      = estmu, 
                                           tau     = esttau,
-                                          pi0     = estpi0))
+                                          pi0     = estpi0,
+                                          T_stat_function = 'G'))
+  
+  # calculate the T statistic w only G1 in the numerator using est parameters
+  TstatG1_estparams = mapply(FUN = calc_T_stat_G1,
+                              Yj = sim_df[ ,'Y'],
+                              sj = sim_df[ , 's'], 
+                              MoreArgs = list(thetaj0 = thetaj0,
+                                              mu      = estmu, 
+                                              tau     = esttau,
+                                              pi0     = estpi0))
+  
+  # estimate the p-values w only G1 in the numerator (using simulation) using est parameters
+  phatG1_estparams = mapply(FUN = est_pval,
+                             tj = TstatG1_estparams,
+                             sj = sim_df[ , 's'], 
+                             MoreArgs = list(B       = B,
+                                             thetaj0 = thetaj0,
+                                             mu      = estmu, 
+                                             tau     = esttau,
+                                             pi0     = estpi0,
+                                             T_stat_function='G1'))
   
   
   
@@ -414,34 +529,51 @@ sim_and_plot <- function(save_folder,
                           data.frame(method = 'standard',
                                      Tstat  = Tstat_standard,
                                      pval   = p_standard)),
+                    # ZIFAB true G
                     cbind(sim_df,
-                          data.frame(method = 'ZIFAB_trueG',
+                          data.frame(method = 'ZIFAB_trueG_TG',
                                      Tstat  = Tstat_trueparams,
                                      pval   = phat_trueparams)),
                     cbind(sim_df,
-                          data.frame(method = 'ZIFAB_EMG',
+                          data.frame(method = 'ZIFAB_trueG_TG1',
+                                     Tstat  = TstatG1_trueparams,
+                                     pval   = phatG1_trueparams)),
+                    # ZIFAB estimated G
+                    cbind(sim_df,
+                          data.frame(method = 'ZIFAB_EMG_TG',
                                      Tstat  = Tstat_estparams,
-                                     pval   = phat_estparams))
+                                     pval   = phat_estparams)),
+                    cbind(sim_df,
+                          data.frame(method = 'ZIFAB_EMG_TG1',
+                                     Tstat  = TstatG1_estparams,
+                                     pval   = phatG1_estparams))
   )
   
   simres_df$method = factor(simres_df$method,
-                            levels = c('standard', 'ZIFAB_trueG', 'ZIFAB_EMG'),
-                            labels = c('standard', 'ZIFAB (true G)', 'ZIFAB (EM G)'))
+                            levels = c('standard',     'ZIFAB_trueG_TG',    'ZIFAB_EMG_TG',    'ZIFAB_trueG_TG1',      'ZIFAB_EMG_TG1'),
+                            labels = c('standard', 'ZIFAB (true G) [G]','ZIFAB (EM G) [G]','ZIFAB (true G) [G1]',  'ZIFAB (EM G) [G1]'))
   method_colors = c('blue', 'orange', 'brown')
-  method_colors = RColorBrewer::brewer.pal(3, name = 'Set2')
+  set2_colors = RColorBrewer::brewer.pal(7, name = 'Set2')
   
+  barplot( 1:length(set2_colors), col = set2_colors)
+  
+  
+  method_colors = c(set2_colors[2], 
+                    colorRampPalette(c('white', set2_colors[1]))(9)[c(4, 9)], 
+                    colorRampPalette(c('white', set2_colors[3]))(9)[c(4, 9)])
+  barplot( 1:length(method_colors), col = method_colors)
   
   # test EM estimation performance (same parameters, change sample size)
   
   # Estimated (using EM alg) parameters
-  sim_df = sim_values(N=5000, G=G, s=s, mu=mu, tau=tau, pi0=pi0)
+  sim_df = sim_values(N=5000, G=G, s=sample(s, size = 5000, replace = TRUE), mu=mu, tau=tau, pi0=pi0)
   Ns = c(25, 50, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000)
   EM_est = NULL
   for(n in Ns) {
     t0 = Sys.time()
     EMparams = est_G_params(Y = sim_df[1:n, 'Y'], 
                             S = sim_df[1:n, 's'], 
-                            num_steps=100,
+                            num_steps=num_steps,
                             initial_mu = 0,
                             initial_tau = 1,
                             initial_pi0 = .5)
@@ -476,8 +608,8 @@ sim_and_plot <- function(save_folder,
   
   
   
-  
-  
+  p_EM_label_samplesize = ggplot() + geom_text(aes(x=0,y=0, label = 'EM Estimates \n by sample size'       ), size = 8) + theme_nothing()
+  p_EM_label_iteration  = ggplot() + geom_text(aes(x=0,y=0, label = 'EM Estimates \n by EM iteration steps'), size = 8) + theme_nothing()
   
   
   # EDA
@@ -619,10 +751,11 @@ sim_and_plot <- function(save_folder,
   
   grob <- gridExtra::arrangeGrob(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
                                  p_mu, p_tau, p_pi0,
-                                 p_mu_samplesize, p_tau_samplesize, p_pi0_samplesize,
+                                 p_mu_samplesize, p_tau_samplesize, p_pi0_samplesize, # 14, 15, 16
+                                 p_EM_label_samplesize, p_EM_label_iteration, # 17, 18
                                  # ncol = 2, 
-                                 layout_matrix = matrix(c(14, 15, 16, NA,
-                                                          11, 12, 13,NA,
+                                 layout_matrix = matrix(c(17, 14, 15, 16,
+                                                          18, 11, 12, 13,
                                                           1, 2, NA, NA,
                                                           3, 4, 5, 6,
                                                           7, 8, 9, 10), byrow = TRUE, nrow = 5))
@@ -664,7 +797,7 @@ sim_and_plot(save_folder = paste0(save_folder_overall, "A/"),
              B=10000)
 
 
-# simulation with  well separated groups (leads to good estimation of G --> good results. but standard is still just ideal, maybe we can get more power??)
+# simulation with  well separated groups 
 set.seed(12345)
 sim_and_plot(save_folder = paste0(save_folder_overall, "B/"), 
              N=1000, 
@@ -676,6 +809,67 @@ sim_and_plot(save_folder = paste0(save_folder_overall, "B/"),
              thetaj0=0,
              B=10000)
 
+# simulation with varying si 
+set.seed(12345)
+sim_and_plot(save_folder = paste0(save_folder_overall, "C/"), 
+             N=1000, 
+             G=1,
+             s=1.8*rbeta(1000, 2, 1) + .2, # range from .2 to 2
+             mu=1,
+             tau=2,
+             pi0=.3,
+             thetaj0=0,
+             B=10000)
+
+
+
+
+# simulation with larger si (s.t. standard has low power)
+set.seed(12345)
+sim_and_plot(save_folder = paste0(save_folder_overall, "D/"), 
+             N=1000, 
+             G=1,
+             s=5,
+             mu=3,
+             tau=1,
+             pi0=.3,
+             thetaj0=0,
+             B=10000,
+             num_steps=1000)
+
+
+
+
+# # NaN's produced in EM
+# set.seed(12345)
+# sim_df = sim_values(N=5000, G=1, s=5, mu=3, tau=1, pi0=.3)
+# 
+# estparams = est_G_params(Y = sim_df[ , 'Y'], 
+#                          S = sim_df[ , 's'], 
+#                          num_steps=1000,
+#                          initial_mu = 0,
+#                          initial_tau = 1,
+#                          initial_pi0 = .5)
+# p_mu  = ggplot(estparams, aes(x = step, y =  mu)) + geom_line() + labs(title = 'mu')
+# p_tau = ggplot(estparams, aes(x = step, y = tau)) + geom_line() + labs(title = 'tau')
+# p_pi0 = ggplot(estparams, aes(x = step, y = pi0)) + geom_line() + labs(title = 'pi0')
+# gridExtra::grid.arrange(p_mu, p_tau, p_pi0)
+# estparams
+# estparams[nrow(estparams), ]
+
+
+# simulation with larger si (s.t. standard has low power), and less distinction between theta_i groups
+set.seed(12345)
+sim_and_plot(save_folder = paste0(save_folder_overall, "E/"), 
+             N=1000, 
+             G=1,
+             s=5,
+             mu=2,
+             tau=2,
+             pi0=.3,
+             thetaj0=0,
+             B=10000,
+             num_steps=1000)
 
 
 
@@ -688,9 +882,20 @@ sim_and_plot(save_folder = paste0(save_folder_overall, "B/"),
 
 
 
-
-
-
+# 
+# 
+# theme_path = 'C:/Users/Cathe/Downloads/Baby, The Code Shines Bright.tmTheme'
+# theme_path = 'C:/Users/Cathe/Downloads/base16-3024-modified.rstheme'
+# rstudioapi::addTheme(themePath=theme_path, apply=TRUE, force = TRUE)
+# 
+# 
+# rstudioapi::convertTheme(
+#   themePath=theme_path, 
+#   add=FALSE, 
+#   # outputLocation, 
+#   apply=TRUE, 
+#   # force, globally
+# )
 
 
 # old simulation
@@ -720,7 +925,7 @@ p_standard     = 2*pnorm(-abs(sim_df[ ,'Y'] / sim_df[ ,'s']))
 
 # True parameters
 # calculate the T statistic using true parameters
-Tstat_trueparams = mapply(FUN = calc_T_stat_one,
+Tstat_trueparams = mapply(FUN = calc_T_stat,
                           Yj = sim_df[ ,'Y'],
                           sj = sim_df[ , 's'], 
                           MoreArgs = list(thetaj0 = thetaj0,
@@ -753,7 +958,7 @@ estpi0 = estparams[nrow(estparams), 'pi0']
 
 
 # calculate the T statistic using true parameters
-Tstat_estparams = mapply(FUN = calc_T_stat_one,
+Tstat_estparams = mapply(FUN = calc_T_stat,
                           Yj = sim_df[ ,'Y'],
                           sj = sim_df[ , 's'], 
                           MoreArgs = list(thetaj0 = thetaj0,
@@ -1064,7 +1269,7 @@ Tstat_EMparams   = rep(NA, nrow(sim_df))
 phat_trueparams  = rep(NA, nrow(sim_df))
 phat_EMparams    = rep(NA, nrow(sim_df))
 for(j in 1:nrow(sim_df)) {
-  Tstat_trueparams[j] = calc_T_stat_one(
+  Tstat_trueparams[j] = calc_T_stat(
                              Yj = sim_df[j, 'Y'],
                              sj = sim_df[j, 's'],
                              thetaj0 = thetaj0,

@@ -1,0 +1,1498 @@
+---
+title: "sim EBCI Cell"
+format: html
+editor: source
+theme: sandstone
+toc: true
+toc-depth: 2
+execute: 
+  echo: true
+  warning: false
+---
+
+# Setup/Load
+
+```{r}
+# libraries
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(ggplot2))
+ggplot2::theme_set(theme_bw())
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
+suppressPackageStartupMessages(library(assertthat)) 
+suppressPackageStartupMessages(library(softImpute))
+suppressPackageStartupMessages(library(latex2exp))
+
+# our code
+source('../../utils/matrix_shrinkage.r')
+source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
+
+```
+
+
+
+Uses some code based on `checkEBCISim.qmd` notebook.
+
+
+
+```{r}
+
+
+#' creates a nxm matrix of low rank r that is blocky on the diagonal
+#' 
+#' @param r (integer) rank
+#' @param n (integer) number of rows
+#' @param m (integer) number of cols
+create_blocky_matrix <- function(r, n, m) {
+  U = matrix(0, nrow = n, ncol = r)
+  V = matrix(0, nrow = m, ncol = r)
+  for(r_ in 1:r) {
+    
+    u_idx = ((n/r)*(r_-1) + 1):((n/r)*r_) # some rounding
+    v_idx = ((m/r)*(r_-1) + 1):((m/r)*r_)
+    # make blocks of the same sign
+    sign_ = 2 * rbinom(n = 1, size = 1, prob = .5) - 1
+    U[u_idx, r_] = sign_ * abs(rnorm(n = length(u_idx), mean = 2/sqrt(n/r), sd = 1/sqrt(n/r)))
+    V[v_idx, r_] = abs(rnorm(n = length(v_idx), mean = 2/sqrt(m/r), sd = 1/sqrt(n/r)))
+  }
+  
+  Sigma = diag(runif(n = r, min = 1, max = 5))
+  
+  M = U %*% Sigma %*% t(V)
+  
+  return(M)
+}
+
+
+```
+
+
+
+
+# Sim
+
+```{r}
+
+```
+
+
+```{r}
+
+#' make and save ebci matrices plots 
+#' plots of matrices
+#'  - (heatmap) thetas
+#'    - true thetas
+#'    - training estimated thetas
+#'    - testing estimated thetas
+#'    - 
+#'  - (heatmap) matrix approx of test split (shrinkage points)
+#'    - <across approx methods>
+#'  - (heatmap) ebci estimates (shrunk points)
+#'    - <across approx methods>
+#'  - (heatmap) ebci significance (ebci ci covers 0 or not)
+#'    - <across approx methods>
+#'  - (points) pseudo p-values/ rejection rates?
+#' @param est_method (character) est_method e.g. 'nb' or 'pois'
+#' @param chosen_rank_to_plot (integer) chosen rank for plot, must be a valid input for 
+#'        e.g. shrinkage_results[['nb']][['matdecomp_svd']][[chosen_rank_to_plot]]
+#' @param shrinkage_results (list) of shrinkage results e.g. shrinkage_results  
+#' @param est_effects_matrices (list) of estimated matrix effects e.g. est_effects_matrices
+#' @param estimate_matapprox (list) of matrix approximations
+#' @param allcells_results (list) of dataframes of the results from using all cells (no split)
+#' @param save_folder (character) save folder path  e.g. "../../plots/simEBCICell/"
+#' @returns nothing, but saves plot at
+#' @examples 
+#' make_matrix_ebci_plots('nb',   1, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+#' make_matrix_ebci_plots('nb',   2, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+#' make_matrix_ebci_plots('nb',   3, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+#' make_matrix_ebci_plots('pois', 1, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+#' make_matrix_ebci_plots('pois', 2, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+#' make_matrix_ebci_plots('pois', 3, shrinkage_results, est_effects_matrices, estimate_matapprox, save_folder = "../../plots/simEBCICell/")
+make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
+                                   shrinkage_results, est_effects_matrices, estimate_matapprox,
+                                   allcells_results,
+                                   save_folder, color_limits = c(-6, 5)) {
+    
+    # color_limits = c(-6, 5)
+    my_heatmap_fill_scale = scale_fill_gradient2(midpoint = 0, limits = color_limits, low = "#3A3A98" , high = "#832424", 
+                                                 breaks = c(color_limits[1], 0, color_limits[2]), 
+                                                 labels = c(paste0('<', color_limits[1]), 0, paste0('>', color_limits[2]))) 
+    
+    #' Function to display matrix in a standard way across all these matrices
+    my_display_matrix <- function(X) {
+      display_matrix(X, color_limits[1], color_limits[2]) + my_heatmap_fill_scale
+    }
+    
+    
+    #  - (heatmap) thetas -----------------------------------------------------------------------------------------------------------------
+    p_ThetaTrue     = my_display_matrix(Theta)                                         + labs(title = TeX(r'($\Theta$)')) 
+    p_ThetaEstTrain = my_display_matrix(est_effects_matrices[[est_method]][['train']]) + labs(title = TeX(r'($\hat{\Theta}$ (Train))'))
+    p_ThetaEstTest  = my_display_matrix(est_effects_matrices[[est_method]][['test' ]]) + labs(title = TeX(r'($\hat{\Theta}$ (Test))')) 
+    p_ThetaEstAll   = my_display_matrix(est_effects_matrices[[est_method]][['all'  ]]) + labs(title = TeX(r'($\hat{\Theta}$ (All))')) 
+    
+    gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,p_ThetaEstAll,
+                            layout_matrix = matrix(c(NA,  1,  2,  3, 4), byrow = TRUE, ncol = 5))
+    
+    
+    #  - (heatmap) matrix approx of test split (shrinkage points) --------------------------------------------------------------------------
+    # estimate_matapprox[[est_method]][['test']] # <- shrinkage points (matrix approx on test split)
+    # names(.) > "matcomp_linearreg"   "matcomp_softImpute"  "matdecomp_svd"       "matdecomp_sparsesvd"
+    p_matapprox_matcomp_linearreg  = my_display_matrix(estimate_matapprox[[est_method]][['test']][['matcomp_linearreg']]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Lin Reg))'))
+    p_matapprox_matcomp_softImpute = my_display_matrix(estimate_matapprox[[est_method]][['test']][['matcomp_softImpute']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Soft Impute))'))
+    p_matapprox_matdecomp_svd      = my_display_matrix(estimate_matapprox[[est_method]][['test']][['matdecomp_svd']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (SVD))')) 
+    p_matapproxmatdecomp_sparsesvd = my_display_matrix(estimate_matapprox[[est_method]][['test']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Sparse SVD))'))
+    
+    # gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest, 
+    #                         p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd,
+    #                         layout_matrix = matrix(c(NA,  1,  2,  3, NA, 
+    #                                                  NA,  4,  5,  6,  7), byrow = TRUE, ncol = 5))
+    
+    
+    #  - (heatmap) ebci estimates (shrunk points) ---------------------------------------------------------------------------------------------
+    p_ebci_estimates_linearreg  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matcomp_linearreg']], # turn back into matrix form
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Lin Reg))'))
+    p_ebci_estimates_softImpute = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matcomp_softImpute']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Soft Impute))'))
+    p_ebci_estimates_svd        = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matdecomp_svd']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (SVD))'))
+    p_ebci_estimates_sparsesvd  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Sparse SVD))'))
+    
+    # gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,  # 1 2 3
+    #                         p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, # 4 5 6 7
+    #                         p_ebci_estimates_linearreg, p_ebci_estimates_softImpute, p_ebci_estimates_svd, p_ebci_estimates_sparsesvd,                # 8 9 10 11
+    #                         layout_matrix = matrix(c(NA,  1,  2,  3,  NA, 
+    #                                                  NA,  4,  5,  6,   7, 
+    #                                                  NA,  8,  9,  10, 11), byrow = TRUE, ncol = 5))
+    
+    
+    #  - (heatmap) ebci significance (ebci ci covers 0 or not) -----------------------------------------------------------------------------------------------------
+    #' Make sig heatmap plots 
+    #' @param df (dataframe) ebci results
+    #' @param title (string) title
+    #' p_ebci_sig_linearreg  = display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matcomp_linearreg']] |>
+    #'                                                               mutate(isSig = as.numeric(! ((lower_ci <= 0) & (0 <= upper_ci)))), # turn back into matrix form
+    #'                                                             y_idx ~ x_idx, value.var = 'isSig')) + 
+    #'                         scale_fill_continuous(breaks = c(0, 1), palette = c("white", "orangered2")) + 
+    #'                                  labs(title = TeX(r'($0 \in$ EBCI (Lin Reg))'))
+    #' make_ebci_sig_plot(df = shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]] |> mutate(lower_ci = 1, upper_ci = 2), title = 'test')
+    #' make_ebci_sig_plot(df = shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]] |> mutate(lower_ci = -1, upper_ci = 1), title = 'test')
+    make_ebci_sig_plot <- function(df, title) {
+      display_matrix(reshape2::acast(df |> mutate(isSig = as.numeric(! ((lower_ci <= 0) & (0 <= upper_ci)))), # turn back into matrix form
+                                     y_idx ~ x_idx, value.var = 'isSig')) +
+      scale_fill_continuous(breaks = c(0, 1), limits = c(0, 1), palette = c("white", "orangered2")) +
+      labs(title = title)
+    }
+    
+    p_ebci_sig_linearreg  = make_ebci_sig_plot(shrinkage_results[[est_method]][['matcomp_linearreg']],                          TeX(r'($0 \in$ EBCI (Lin Reg))'))
+    p_ebci_sig_softImpute = make_ebci_sig_plot(shrinkage_results[[est_method]][['matcomp_softImpute']][[chosen_rank_to_plot]],  TeX(r'($0 \in$ EBCI (Soft Impute))'))
+    p_ebci_sig_svd        = make_ebci_sig_plot(shrinkage_results[[est_method]][['matdecomp_svd']][[chosen_rank_to_plot]],       TeX(r'($0 \in$ EBCI (SVD))'))
+    p_ebci_sig_sparsesvd  = make_ebci_sig_plot(shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], TeX(r'($0 \in$ EBCI (Sparse SVD))'))
+    
+    p_sig_all             = make_ebci_sig_plot(allcells_results[[est_method]], TeX(r'($0 \in$ CI (all))'))
+    
+    
+    
+    
+    # gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,  # 1 2 3
+    #                         p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, # 4   5  6  7
+    #                         p_ebci_estimates_linearreg, p_ebci_estimates_softImpute, p_ebci_estimates_svd, p_ebci_estimates_sparsesvd,                # 8   9 10 11
+    #                         p_ebci_sig_linearreg, p_ebci_sig_softImpute, p_ebci_sig_svd, p_ebci_sig_sparsesvd,                                        # 12 13 14 15
+    #                         layout_matrix = matrix(c(NA,  1,  2,  3,  NA, 
+    #                                                  NA,  4,  5,  6,   7, 
+    #                                                  NA,  8,  9,  10, 11,
+    #                                                  NA,  12, 13, 14, 15), byrow = TRUE, ncol = 5))
+    
+    # put all together ---------------------------------------------------------------------------------------------------------------------------------------
+    grob <- gridExtra::arrangeGrob(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,  # 1 2 3
+                                  p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, # 4   5  6  7
+                                  p_ebci_estimates_linearreg, p_ebci_estimates_softImpute, p_ebci_estimates_svd, p_ebci_estimates_sparsesvd,                # 8   9 10 11
+                                  p_ebci_sig_linearreg, p_ebci_sig_softImpute, p_ebci_sig_svd, p_ebci_sig_sparsesvd,                                        # 12 13 14 15
+                                  p_ThetaEstAll, p_sig_all, # 16 17
+                                  layout_matrix = matrix(c(1,  2,  3,  NA, 16,
+                                                           4,  5,  6,   7, NA, 
+                                                           8,  9,  10, 11, NA, 
+                                                           12, 13, 14, 15, 17), byrow = TRUE, ncol = 5))
+    gridExtra::grid.arrange(grob)
+    ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.pdf', save_folder, est_method, chosen_rank_to_plot), grob, width = 18, height = 12)
+
+}
+
+
+
+
+
+
+#' Sim pois and nb cells w sample splitting and perform EBCI shrinkage on matrix approximations
+sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, ranks, save_folder=NULL) {
+  # constant_coef = 1 # overall mean (mean for untreated/control cells)
+  constant_coef = runif(n = G, min = .1, max = 2) # overall mean across genes (mean for untreated/control cells)
+  
+  # create names 
+  matrix_rownames = sprintf("grna%04.f", 1:P) # should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
+  matrix_colnames = sprintf("gene%04.f", 1:G)
+  
+  # treatment effects 
+  Theta = create_blocky_matrix(r = rank, n = P, m = G)
+  row.names(Theta) = matrix_rownames
+  colnames(Theta) = matrix_colnames
+  
+  # assign perturbation/grna treatment
+  grna = list()
+  grna$train =  t(rmultinom(n=N, size=1, prob=pi_P)) # n x p (#cells x #perturbations)
+  grna$test =  t(rmultinom(n=N, size=1, prob=pi_P)) 
+  # grna = t(rmultinom(n=N, size=1, prob=pi_P)) # n x p (#cells x #perturbations)
+  # grna_factor = apply(X=grna, MARGIN=1, FUN = function(v) {which(v==1)}) |> 
+  #               factor() # factor version of grna (which is one-hot encoded)
+  
+  
+  
+  # 1. Simulate cell-level data -------------------------------------------------------------------------------------
+  cell_mean_effects = list()
+  cell_mean_effects$train = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$train %*% Theta
+  cell_mean_effects$test  = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$test  %*% Theta
+  
+  
+  
+  # observed counts for each cell across genes follow pois or nb distribution
+  counts           = list()
+  counts[['pois']] = list()
+  counts[['nb']]   = list()
+  
+  counts$pois$train = matrix(NA, nrow = N, ncol = G) # treated cells # train
+  counts$pois$test  = matrix(NA, nrow = N, ncol = G)                 # test 
+  counts$nb$train   = matrix(NA, nrow = N, ncol = G)                 # train 
+  counts$nb$test    = matrix(NA, nrow = N, ncol = G)                 # test  
+  
+  counts$pois_control$train = matrix(NA, nrow = N_control, ncol = G) # control cells # train
+  counts$pois_control$test  = matrix(NA, nrow = N_control, ncol = G)                 # test
+  counts$nb_control$train   = matrix(NA, nrow = N_control, ncol = G)                 # train 
+  counts$nb_control$test    = matrix(NA, nrow = N_control, ncol = G)                 # test 
+  
+  for(j in 1:G) {
+    counts$pois$train[,j] = rpois(  n=N,                lambda = exp(cell_mean_effects$train[,j])) 
+    counts$pois$test[,j]  = rpois(  n=N,                lambda = exp(cell_mean_effects$test[,j])) 
+    counts$nb$train[,j]   = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$train[,j]))
+    counts$nb$test[,j]    = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$test[,j]))
+    
+    counts$pois_control$train[,j] = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+    counts$pois_control$test[,j] = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+    counts$nb_control$train[,j]    = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+    counts$nb_control$test[,j]    = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+    
+  }
+  
+  
+  
+  # 2. Estimate effects -------------------------------------------------------------------------------------------
+  
+  # am i stupid? we could either do: 
+  # (1) gene g ~ grna p for each (g, p) or
+  # (2) gene g ~ \vec{grna} for each g (treat perturbations as levels in a categorical variable)
+  # these should be the same (as long as there aren't other variables, eg confounders) because
+  # the only variables are the treatment
+  # (but when there are other variables, (2) is better bc you can then use a large sample size for the
+  #  estimation of those coefficients. But, I think SCEPTRE does it one by one (1), so i will do it
+  #  this way in the simulation)
+  # (i mean, if you think that the confounders effect the outcome differently for each population,
+  #  cells w pert 1 vs cells w pert 2, then you should do (1). But that seems maybe unlikely, and it
+  #  would probably be helpful to be able to pool information from the larger sample size of cells)
+  
+  
+  # Do 'naively' at first: for each (i,j) pair, perform glm fit 
+  t0 = Sys.time()
+  est_effects_matrices = list()
+  est_se_matrices = list()
+  for(est_method in c('pois', 'nb')) {
+    est_effects_matrices[[est_method]] = list()
+    est_se_matrices     [[est_method]] = list()
+    for(split in c('train', 'test', 'all')) {
+      est_effects_matrices[[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))  
+      est_se_matrices     [[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))  
+      
+      
+      # estimate
+      for(i in 1:P) {
+        for(j in 1:G) {
+          if(split == 'all') {
+            pert_i_idx_train = which(grna[['train']][,i] == 1)
+            cur_dfij_train = data.frame(Y = c(counts[[est_method]][['train']][pert_i_idx_train,j], counts[[paste0(est_method, '_control')]][['train']][,j]),
+                                  A = c(rep(1, times = length(pert_i_idx_train)), rep(0, times = N_control)))
+            pert_i_idx_test = which(grna[['test']][,i] == 1)
+            cur_dfij_test = data.frame(Y = c(counts[[est_method]][['test']][pert_i_idx_test,j], counts[[paste0(est_method, '_control')]][['test']][,j]),
+                                  A = c(rep(1, times = length(pert_i_idx_test)), rep(0, times = N_control)))
+            cur_dfij = rbind(cur_dfij_train, cur_dfij_test)
+          } else { # train or test
+            pert_i_idx = which(grna[[split]][,i] == 1)
+            cur_dfij = data.frame(Y = c(counts[[est_method]][[split]][pert_i_idx,j], counts[[paste0(est_method, '_control')]][[split]][,j]),
+                                  A = c(rep(1, times = length(pert_i_idx)), rep(0, times = N_control)))
+          }
+          
+          if(est_method == 'pois') {
+            glm_fit =       glm(   formula = 'Y ~ 1 + A', data = cur_dfij, family = poisson())
+          } else if(est_method == 'nb') {
+            glm_fit   = MASS::glm.nb(formula = 'Y ~ 1 + A', data = cur_dfij)
+          }
+          
+          est_effects_matrices[[est_method]][[split]][i,j] = as.numeric(glm_fit$coefficients['A'])
+          est_se_matrices     [[est_method]][[split]][i,j] = summary(glm_fit)$coefficients['A', 'Std. Error']
+          
+        }
+      }
+    }
+  }
+  t1 = Sys.time(); print(t1 - t0)
+  
+  # combine results for 'all' using all cells (standard method)
+  allcells_results = list()
+  for(est_method in c('pois', 'nb')) {
+    cur_df = 
+      merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]], value.name = 'estimate', varnames = c('grna', 'gene')),
+            merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]] - qnorm(1 - ALPHA/2) * est_se_matrices[[est_method]][['all'  ]], 
+                     value.name = 'lower_ci', varnames = c('grna', 'gene')), 
+                  reshape2::melt(est_effects_matrices[[est_method]][['all'  ]] + qnorm(1 - ALPHA/2) * est_se_matrices[[est_method]][['all'  ]], 
+                     value.name = 'upper_ci', varnames = c('grna', 'gene')), 
+                  by = c('grna', 'gene')), 
+            by = c('grna', 'gene'))
+    cur_df = merge(merge(cur_df, 
+                         data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                         by = 'grna'), 
+                   data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                   by = 'gene')
+    allcells_results[[est_method]] = cur_df
+    rm(cur_df)
+  }
+  
+  
+  # 3. Matrix Decomp/Approximation -------------------------------------------------------------------------------------
+  estimate_matapprox = list()
+  estimate_matapprox_plots = list()
+  for(est_method in c('pois', 'nb')) {
+    estimate_matapprox      [[est_method]] = list()
+    estimate_matapprox_plots[[est_method]] = list()
+    
+    for(split in c('train', 'test')) {
+      estimate_matapprox      [[est_method]][[split]] = list()
+      estimate_matapprox_plots[[est_method]][[split]] = list()
+      cur_mat = est_effects_matrices[[est_method]][[split]] # matrix to make approximations of
+      n = nrow(cur_mat); m = ncol(cur_mat)
+      
+      
+      # === matrix completion methods (linear reg, softImpute)
+      # --- Linear Reg
+      estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']] =  
+                       matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+      for(i in 1:n) {
+        for(j in 1:m) {
+          estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']][i,j] = linearreg(cur_mat, i, j)
+        }
+      }
+      estimate_matapprox_plots[[est_method]][[split]][['matcomp_linearreg']] = display_matrix(estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']])
+      
+      
+      # --- softImpute
+      estimate_matapprox      [[est_method]][[split]][['matcomp_softImpute']] = list()
+      estimate_matapprox_plots[[est_method]][[split]][['matcomp_softImpute']] = list()
+      for(r in ranks) {
+        estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]] = 
+                       matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+        matcomp_fun = create_matrix_completion_softImpute(X = cur_mat, rank_max = r, type = 'als') 
+        for(i in 1:n) {
+          for(j in 1:m) {
+            estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]][i,j] = matcomp_fun(i, j)
+          }
+        }
+        estimate_matapprox_plots[[est_method]][[split]][['matcomp_softImpute']][[r]] =
+                                display_matrix(estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]])
+      }
+      
+      # === matrix decomposition methods (svd, sparse svd, etc...)
+      estimate_matapprox      [[est_method]][[split]][['matdecomp_svd']]       = list()
+      estimate_matapprox      [[est_method]][[split]][['matdecomp_sparsesvd']] = list()
+      estimate_matapprox_plots[[est_method]][[split]][['matdecomp_svd']]       = list()
+      estimate_matapprox_plots[[est_method]][[split]][['matdecomp_sparsesvd']] = list()
+      
+      svdres = svd(cur_mat, nu = max(ranks), nv = max(ranks))
+      cv.out = PMA::SPC.cv(cur_mat, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10))
+      pmd_res = PMA::SPC(cur_mat, sumabsv=cv.out$bestsumabsv, K = max(ranks))
+      for(r in ranks) {
+        # --- SVD
+        cur_matapprox = svdres$u[, 1:r, drop=FALSE] %*% diag(svdres$d[1:r], nrow=r, ncol=r) %*% t(svdres$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+        row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+        estimate_matapprox[[est_method]][[split]][['matdecomp_svd']][[r]] = cur_matapprox
+        estimate_matapprox_plots[[est_method]][[split]][['matdecomp_svd']][[r]] = display_matrix(cur_matapprox)
+        rm(cur_matapprox)
+        
+        # --- Sparse SVD
+        cur_matapprox = pmd_res$u[, 1:r, drop=FALSE] %*% diag(pmd_res$d[1:r], nrow=r, ncol=r) %*% t(pmd_res$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+        row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+        estimate_matapprox[[est_method]][[split]][['matdecomp_sparsesvd']][[r]] = cur_matapprox
+        estimate_matapprox_plots[[est_method]][[split]][['matdecomp_sparsesvd']][[r]] = display_matrix(cur_matapprox)
+        rm(cur_matapprox)
+      }
+    }
+  }
+  
+  
+  # 4. Perform EBCI -------------------------------------------------------------------------------------
+  # EBCI to arbitrary point
+  # use shrink_matrix from utils/matrix_shrinkage.r
+  shrinkage_results = list()
+  for(est_method in names(estimate_matapprox)) {
+    shrinkage_results[[est_method]] = list()
+    
+    cur_estimates_mat = est_effects_matrices[[est_method]][['train']] # matrix of estimates to shrink
+    cur_se_mat        = est_se_matrices[[est_method]][['train']]      # matrix of se's of est to shrink
+    
+    for(approx_method in names(estimate_matapprox[[est_method]][['test']])) {
+      # # could test by using: is.matrix or is.list
+      # is.matrix(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+      # is.matrix(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+      # is.list(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+      # is.list(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+      
+      # if there are not ranks (eg linearreg)
+      if(is.matrix(estimate_matapprox[[est_method]][['test']][[approx_method]])) {
+        cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['test']][[approx_method]]
+        
+        # shrink matrix
+        cur_shrink_res = 
+          shrink_matrix(unshrunk_mat = cur_estimates_mat,
+                      shrinkpoint_mat = cur_shrinkagepoint_mat,
+                      se_mat = cur_se_mat,
+                      ALPHA = ALPHA,
+                      return_ebci_obj=FALSE,
+                      weight_mat=NULL)
+        # add true theta values
+        cur_shrink_res = merge(cur_shrink_res, 
+                               reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
+                               by = c('grna', 'gene'))
+        # add idx for plotting later
+        cur_shrink_res = merge(merge(cur_shrink_res, 
+                                     data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                                     by = 'grna'), 
+                               data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                               by = 'gene')
+        # save result
+        shrinkage_results[[est_method]][[approx_method]] = cur_shrink_res
+  
+        
+      } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+        for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+          cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['test']][[approx_method]][[r]]
+          # shrink matrix
+          cur_shrink_res = 
+            shrink_matrix(unshrunk_mat = cur_estimates_mat,
+                        shrinkpoint_mat = cur_shrinkagepoint_mat,
+                        se_mat = cur_se_mat,
+                        ALPHA = ALPHA,
+                        return_ebci_obj=FALSE,
+                        weight_mat=NULL)
+          # add true theta values
+          cur_shrink_res = merge(cur_shrink_res, 
+                                 reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
+                                 by = c('grna', 'gene'))
+          # add idx for plotting later
+          cur_shrink_res = merge(merge(cur_shrink_res, 
+                                       data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                                       by = 'grna'), 
+                                 data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                                 by = 'gene')
+          # save result
+          shrinkage_results[[est_method]][[approx_method]][[r]] = cur_shrink_res
+          
+        }
+        
+      }
+    }
+  }
+  
+  
+  # 5. some plots -----------------------------------------------------------------------------------------
+  # if specified to save plots (e.g. !is.null(save_folder))
+  all_sim_results = list(est_effects_matrices=est_effects_matrices,
+                         est_se_matrices=est_se_matrices,
+                         estimate_matapprox=estimate_matapprox,
+                         shrinkage_results=shrinkage_results)
+  
+  
+  if(!is.null(save_folder) && dir.exists(save_folder)) {
+    saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder))
+    
+    
+    # 5.1 some plots particular for each method
+    # use plot_shrink_results from utils/matrix_shrinkage.r
+    
+    for(est_method in names(shrinkage_results)) { # pois or nb
+      for(approx_method in names(shrinkage_results[[est_method]])) {
+        # # could test by using: is.matrix or is.list... should use list so it is consistent across different loops
+        # is.matrix(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+        # is.matrix(shrinkage_results[[est_method]][['matcomp_linearreg']])
+        # is.list(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+        # is.list(shrinkage_results[[est_method]][['matcomp_linearreg']])
+        # is.data.frame(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+        # is.data.frame(shrinkage_results[[est_method]][['matcomp_linearreg']])
+        
+        # if there are not ranks (eg linearreg)
+        if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+          cur_shrinkage_plots_folder = sprintf('%s%s/', save_folder, approx_method)
+          dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
+          cur_shrink_res = shrinkage_results[[est_method]][[approx_method]]
+          
+          plot_shrink_results(shrink_df      = cur_shrink_res, 
+                                plot_folder    = cur_shrinkage_plots_folder, 
+                                order_rowscols = FALSE, 
+                                grna_index     = NULL, 
+                                gene_index     = NULL, 
+                                unshrunk_ALPHA = ALPHA)
+          
+          
+          
+        } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+          for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+            cur_shrinkage_plots_folder = sprintf('%s/%s_%02.f/', save_folder, approx_method, r)
+            dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
+            cur_shrink_res = shrinkage_results[[est_method]][[approx_method]][[r]]
+            
+            plot_shrink_results(shrink_df      = cur_shrink_res, 
+                                plot_folder    = cur_shrinkage_plots_folder, 
+                                order_rowscols = FALSE, 
+                                grna_index     = NULL, 
+                                gene_index     = NULL, 
+                                unshrunk_ALPHA = ALPHA)
+          }
+        }
+      }
+    }
+    
+    
+    # 5.2 matrix plots
+    for(est_method in c('pois', 'nb')) {
+      for(r in ranks) {
+        make_matrix_ebci_plots(est_method = est_method,   
+                               chosen_rank_to_plot = r, 
+                               shrinkage_results = shrinkage_results, 
+                               est_effects_matrices = est_effects_matrices, 
+                               estimate_matapprox = estimate_matapprox, 
+                               save_folder = save_folder, 
+                               allcells_results = allcells_results, 
+                               color_limits = c(floor(min(Theta-.75)), ceiling(max(Theta+.75))))
+      }
+    }
+  }
+  
+  
+  
+  
+  
+  
+  # return -------------------------------------------------------------------------
+  return(all_sim_results)
+}
+
+
+
+```
+
+
+```{r}
+
+ALPHA = .1 # PARAMETER
+overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
+
+
+# === SETTING A === (small, easy, fast setting)
+set.seed(12345)
+setting_name = 'A'
+P=5
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+                   ALPHA=ALPHA,            # alpha testing level (for CIs)
+                   P=P,                    # number of grnas/perturbations
+                   G=10,                   # number of genes
+                   N=1000,                 # number of treated cells
+                   N_control=500,          # number of control cells
+                   pi_P=pi_P,              # propensity score for each treatment
+                   rank=2,                 # true rank of theta matrix
+                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+                   ranks=c(1, 2, 3),       # ranks for matrix approximations
+                   save_folder=save_folder # folder to save results and plots
+)
+t1 = Sys.time(); print(t1 - t0)
+
+# === SETTING B === (slightly larger, )
+set.seed(12345)
+setting_name = 'B'
+P = 10
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_B_results = sim_EBCI_celllevel(
+                   ALPHA=ALPHA,            # alpha testing level (for CIs)
+                   P=P,                    # number of grnas/perturbations
+                   G=20,                   # number of genes
+                   N=10000,                 # number of treated cells
+                   N_control=5000,          # number of control cells
+                   pi_P=pi_P,              # propensity score for each treatment
+                   rank=3,                 # true rank of theta matrix
+                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+                   ranks=c(1, 2, 3, 5),       # ranks for matrix approximations
+                   save_folder=NULL # folder to save results and plots
+)
+t1 = Sys.time(); print(t1 - t0) # ~4 mins without plots
+
+
+# === SETTING B === (even larger, )
+set.seed(12345)
+setting_name = 'B'
+P = 25
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_B_results = sim_EBCI_celllevel(
+                   ALPHA=ALPHA,            # alpha testing level (for CIs)
+                   P=P,                    # number of grnas/perturbations
+                   G=200,                   # number of genes
+                   N=10000,                 # number of treated cells
+                   N_control=5000,          # number of control cells
+                   pi_P=pi_P,              # propensity score for each treatment
+                   rank=3,                 # true rank of theta matrix
+                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+                   ranks=c(1, 2, 3, 5),       # ranks for matrix approximations
+                   save_folder=NULL # folder to save results and plots
+)
+t1 = Sys.time(); print(t1 - t0) # 4 mins without plots
+
+
+
+if(!is.null(NULL) && dir.exists(NULL)) {
+  print('hi')
+}
+
+```
+
+
+# working out stuff
+
+
+```{r eval=FALSE}
+ 
+# more plots showing shrinkage changes
+
+
+
+plot_df = NULL
+for(est_method in names(shrinkage_results)) {
+  plot_df_ = shrinkage_results[[est_method]][['matcomp_linearreg']] |> # pick any (would be same)
+                    dplyr::mutate(method = 'unshrunk', rank = NA) |>
+                    dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                  shrunk_value    = unshrunk_value, 
+                                  lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+                                  upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se) 
+  for(approx_method in names(shrinkage_results[[est_method]])) {
+     # if there are not ranks (eg linearreg)
+      if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+        plot_df_ = rbind(plot_df_, 
+                        shrinkage_results[[est_method]][[approx_method]] |> 
+                        dplyr::mutate(method = approx_method, rank = NA))
+      } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+        for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+           plot_df_ = rbind(plot_df_, 
+                        shrinkage_results[[est_method]][[approx_method]][[r]] |> 
+                        dplyr::mutate(method = approx_method, rank = r))
+        }
+        
+      }
+  }
+  plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
+  rm(plot_df_)
+}
+
+
+
+
+plot_df |> group_by(sim_distn, method, rank) |> summarize(mse = mean((shrunk_value - true_theta)^2)) |> arrange(sim_distn, method, rank)
+
+```
+
+
+
+
+
+
+
+
+# Trash
+
+```{r eval=FALSE}
+set.seed(12345)
+ALPHA = .1 # PARAMETER
+# simulate values at the cell sample level 
+P = 5  # number of perturbations/treatments
+G = 10 # number of genes/outcomes
+N = 1000        # sample size- number of cells getting treatment perturbations
+N_control = 500 # sample size- number of control cells
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+
+rank = 2 # true rank of theta matrix
+nb_size = 3 # contributes to the overdispersion of NB? (smaller, more overdispersed?)
+ranks = c(1, 2, 3) # ranks for matrix approx methods 
+
+# constant_coef = 1 # overall mean (mean for untreated/control cells)
+constant_coef = runif(n = G, min = .1, max = 2) # overall mean across genes (mean for untreated/control cells)
+
+# create names 
+matrix_rownames = sprintf("grna%04.f", 1:P) # should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
+matrix_colnames = sprintf("gene%04.f", 1:G)
+
+# treatment effects 
+Theta = create_blocky_matrix(r = rank, n = P, m = G)
+row.names(Theta) = matrix_rownames
+colnames(Theta) = matrix_colnames
+
+# assign perturbation/grna treatment
+grna = list()
+grna$train =  t(rmultinom(n=N, size=1, prob=pi_P)) # n x p (#cells x #perturbations)
+grna$test =  t(rmultinom(n=N, size=1, prob=pi_P)) 
+# grna = t(rmultinom(n=N, size=1, prob=pi_P)) # n x p (#cells x #perturbations)
+# grna_factor = apply(X=grna, MARGIN=1, FUN = function(v) {which(v==1)}) |> 
+#               factor() # factor version of grna (which is one-hot encoded)
+
+
+
+
+
+
+
+
+
+# simulate data...
+cell_mean_effects = list()
+cell_mean_effects$train = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$train %*% Theta
+cell_mean_effects$test  = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$test  %*% Theta
+
+
+
+# observed counts for each cell across genes
+counts           = list()
+counts[['pois']] = list()
+counts[['nb']]   = list()
+
+counts$pois$train = matrix(NA, nrow = N, ncol = G) # treated cells # train
+counts$pois$test  = matrix(NA, nrow = N, ncol = G)                 # test 
+counts$nb$train   = matrix(NA, nrow = N, ncol = G)                 # train 
+counts$nb$test    = matrix(NA, nrow = N, ncol = G)                 # test  
+
+counts$pois_control$train = matrix(NA, nrow = N_control, ncol = G) # control cells # train
+counts$pois_control$test  = matrix(NA, nrow = N_control, ncol = G)                 # test
+counts$nb_control$train   = matrix(NA, nrow = N_control, ncol = G)                 # train 
+counts$nb_control$test    = matrix(NA, nrow = N_control, ncol = G)                 # test 
+
+for(j in 1:G) {
+  counts$pois$train[,j] = rpois(  n=N,                lambda = exp(cell_mean_effects$train[,j])) 
+  counts$pois$test[,j]  = rpois(  n=N,                lambda = exp(cell_mean_effects$test[,j])) 
+  counts$nb$train[,j]   = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$train[,j]))
+  counts$nb$test[,j]    = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$test[,j]))
+  
+  counts$pois_control$train[,j] = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+  counts$pois_control$test[,j] = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+  counts$nb_control$train[,j]    = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+  counts$nb_control$test[,j]    = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+  
+}
+
+
+
+# am i stupid? we could either do: 
+# (1) gene g ~ grna p for each (g, p) or
+# (2) gene g ~ \vec{grna} for each g (treat perturbations as levels in a categorical variable)
+# these should be the same (as long as there aren't other variables, eg confounders) because
+# the only variables are the treatment
+# (but when there are other variables, (2) is better bc you can then use a large sample size for the
+#  estimation of those coefficients. But, I think SCEPTRE does it one by one (1), so i will do it
+#  this way in the simulation)
+# (i mean, if you think that the confounders effect the outcome differently for each population,
+#  cells w pert 1 vs cells w pert 2, then you should do (1). But that seems maybe unlikely, and it
+#  would probably be helpful to be able to pool information from the larger sample size of cells)
+
+
+
+# Do 'naively' at first: for each (i,j) pair, perform glm fit
+t0 = Sys.time()
+est_effects_matrices = list()
+est_se_matrices = list()
+for(est_method in c('pois', 'nb')) {
+  est_effects_matrices[[est_method]] = list()
+  est_se_matrices     [[est_method]] = list()
+  for(split in c('train', 'test', 'all')) {
+    est_effects_matrices[[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))  
+    est_se_matrices     [[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))  
+    
+    
+    # estimate
+    for(i in 1:P) {
+      # # indices of cells w pert i
+      # switch(split,
+      #        'all'=
+      #        {pert_i_idx = c(which(grna[['train']][,i] == 1), 
+      #                        which(grna[['test' ]][,i] == 1))},
+      #        # default: train or test
+      #        {pert_i_idx = which(grna[[split]][,i] == 1)})
+
+      
+      for(j in 1:G) {
+        if(split == 'all') {
+          pert_i_idx_train = which(grna[['train']][,i] == 1)
+          cur_dfij_train = data.frame(Y = c(counts[[est_method]][['train']][pert_i_idx_train,j], counts[[paste0(est_method, '_control')]][['train']][,j]),
+                                A = c(rep(1, times = length(pert_i_idx_train)), rep(0, times = N_control)))
+          pert_i_idx_test = which(grna[['test']][,i] == 1)
+          cur_dfij_test = data.frame(Y = c(counts[[est_method]][['test']][pert_i_idx_test,j], counts[[paste0(est_method, '_control')]][['test']][,j]),
+                                A = c(rep(1, times = length(pert_i_idx_test)), rep(0, times = N_control)))
+          cur_dfij = rbind(cur_dfij_train, cur_dfij_test)
+        } else { # train or test
+          pert_i_idx = which(grna[[split]][,i] == 1)
+          cur_dfij = data.frame(Y = c(counts[[est_method]][[split]][pert_i_idx,j], counts[[paste0(est_method, '_control')]][[split]][,j]),
+                                A = c(rep(1, times = length(pert_i_idx)), rep(0, times = N_control)))
+        }
+        
+        if(est_method == 'pois') {
+          glm_fit =       glm(   formula = 'Y ~ 1 + A', data = cur_dfij, family = poisson())
+        } else if(est_method == 'nb') {
+          glm_fit   = MASS::glm.nb(formula = 'Y ~ 1 + A', data = cur_dfij)
+        }
+        
+        est_effects_matrices[[est_method]][[split]][i,j] = as.numeric(glm_fit$coefficients['A'])
+        est_se_matrices     [[est_method]][[split]][i,j] = summary(glm_fit)$coefficients['A', 'Std. Error']
+        
+        
+        
+      }
+    }
+  }
+}
+# 
+# est_effects_pois = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))  
+# est_effects_nb   = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames)) 
+# est_se_pois  = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames))
+# est_se_nb    = matrix(NA, nrow = P, ncol = G, dimnames = list(matrix_rownames, matrix_colnames)) 
+# for(i in 1:P) {
+#   pert_i_idx = which(grna[,i] == 1) # indices of cells w pert i
+#   for(j in 1:G) {
+#     
+#     cur_dfij = data.frame(Y_pois = c(counts_pois[pert_i_idx,j], counts_pois_control[,j]),
+#                           Y_nb   = c(counts_nb[pert_i_idx,j]  , counts_nb_control[,j]  ),
+#                           A      = c(rep(1, times = length(pert_i_idx)), rep(0, times = N_control)))
+#     
+#     pois_fit =       glm(   formula = 'Y_pois ~ 1 + A', data = cur_dfij, family = poisson())
+#     nb_fit   = MASS::glm.nb(formula =   'Y_nb ~ 1 + A', data = cur_dfij)
+# 
+#     est_effects_pois[i,j] = as.numeric(pois_fit$coefficients['A'])
+#     est_effects_nb[i,j]   = as.numeric(  nb_fit$coefficients['A'])
+#     
+#     est_se_pois[i,j] = summary(pois_fit)$coefficients['A', 'Std. Error']
+#     est_se_nb[i,j]   = summary(  nb_fit)$coefficients['A', 'Std. Error']
+#     
+#   }
+# }
+t1 = Sys.time(); print(t1 - t0)
+
+allcells_results = list()
+for(est_method in c('pois', 'nb')) {
+  
+  cur_df = 
+    merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]], value.name = 'estimate', varnames = c('grna', 'gene')),
+          merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]] - qnorm(1 - ALPHA/2) * est_se_matrices[[est_method]][['all'  ]], 
+                   value.name = 'lower_ci', varnames = c('grna', 'gene')), 
+                reshape2::melt(est_effects_matrices[[est_method]][['all'  ]] + qnorm(1 - ALPHA/2) * est_se_matrices[[est_method]][['all'  ]], 
+                   value.name = 'upper_ci', varnames = c('grna', 'gene')), 
+                by = c('grna', 'gene')), 
+          by = c('grna', 'gene'))
+  cur_df = merge(merge(cur_df, 
+                       data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                       by = 'grna'), 
+                 data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                 by = 'gene')
+  allcells_results[[est_method]] = cur_df
+  rm(cur_df)
+  
+}
+
+
+
+
+
+# the effects are the coef from glm... take log transform for ATE? no bc i transformed in the sim already... only do this at one of the stages
+# i think it should be this ay because e ant our estimates to be asymptotically normal, but this on't be true if e then take a transformation
+display_matrix(est_effects_matrices$pois$train)
+display_matrix(est_effects_matrices$pois$test)
+display_matrix(est_effects_matrices$nb$train)
+display_matrix(est_effects_matrices$nb$test)
+
+
+
+
+
+# Matrix Decomp/Approximation
+estimate_matapprox = list()
+estimate_matapprox_plots = list()
+for(est_method in c('pois', 'nb')) {
+  estimate_matapprox      [[est_method]] = list()
+  estimate_matapprox_plots[[est_method]] = list()
+  
+  for(split in c('train', 'test')) {
+    estimate_matapprox      [[est_method]][[split]] = list()
+    estimate_matapprox_plots[[est_method]][[split]] = list()
+    cur_mat = est_effects_matrices[[est_method]][[split]] # matrix to make approximations of
+    n = nrow(cur_mat); m = ncol(cur_mat)
+    
+    
+    # === matrix completion methods (linear reg, softImpute)
+    # --- Linear Reg
+    estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']] =  
+                     matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+    for(i in 1:n) {
+      for(j in 1:m) {
+        estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']][i,j] = linearreg(cur_mat, i, j)
+      }
+    }
+    estimate_matapprox_plots[[est_method]][[split]][['matcomp_linearreg']] = display_matrix(estimate_matapprox[[est_method]][[split]][['matcomp_linearreg']])
+    
+    
+    # --- softImpute
+    estimate_matapprox      [[est_method]][[split]][['matcomp_softImpute']] = list()
+    estimate_matapprox_plots[[est_method]][[split]][['matcomp_softImpute']] = list()
+    for(r in ranks) {
+      estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]] = 
+                     matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+      matcomp_fun = create_matrix_completion_softImpute(X = cur_mat, rank_max = r, type = 'als') 
+      for(i in 1:n) {
+        for(j in 1:m) {
+          estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]][i,j] = matcomp_fun(i, j)
+        }
+      }
+      estimate_matapprox_plots[[est_method]][[split]][['matcomp_softImpute']][[r]] =
+                              display_matrix(estimate_matapprox[[est_method]][[split]][['matcomp_softImpute']][[r]])
+    }
+    
+    
+    # === matrix decomposition methods (svd, sparse svd, etc...)
+    estimate_matapprox      [[est_method]][[split]][['matdecomp_svd']]       = list()
+    estimate_matapprox      [[est_method]][[split]][['matdecomp_sparsesvd']] = list()
+    estimate_matapprox_plots[[est_method]][[split]][['matdecomp_svd']]       = list()
+    estimate_matapprox_plots[[est_method]][[split]][['matdecomp_sparsesvd']] = list()
+    
+    svdres = svd(cur_mat, nu = max(ranks), nv = max(ranks))
+    cv.out = PMA::SPC.cv(cur_mat, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10))
+    pmd_res = PMA::SPC(cur_mat, sumabsv=cv.out$bestsumabsv, K = max(ranks))
+    for(r in ranks) {
+      # --- SVD
+      cur_matapprox = svdres$u[, 1:r, drop=FALSE] %*% diag(svdres$d[1:r], nrow=r, ncol=r) %*% t(svdres$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+      row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+      estimate_matapprox[[est_method]][[split]][['matdecomp_svd']][[r]] = cur_matapprox
+      estimate_matapprox_plots[[est_method]][[split]][['matdecomp_svd']][[r]] = display_matrix(cur_matapprox)
+      rm(cur_matapprox)
+      
+      # --- Sparse SVD
+      cur_matapprox = pmd_res$u[, 1:r, drop=FALSE] %*% diag(pmd_res$d[1:r], nrow=r, ncol=r) %*% t(pmd_res$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+      row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+      estimate_matapprox[[est_method]][[split]][['matdecomp_sparsesvd']][[r]] = cur_matapprox
+      estimate_matapprox_plots[[est_method]][[split]][['matdecomp_sparsesvd']][[r]] = display_matrix(cur_matapprox)
+      rm(cur_matapprox)
+    
+    
+    
+    }
+  }
+}
+
+  
+if(F) {
+  
+estimate_matapprox = list()
+estimate_matapprox$pois = list()
+estimate_matapprox$nb   = list()
+
+estimate_matapprox_plots = list()
+estimate_matapprox_plots$pois = list()
+estimate_matapprox_plots$nb   = list()
+
+
+ranks = c(1, 2, 3)
+for(est_method in names(est_effects_matrices)) {
+  cur_mat = est_effects_matrices[[est_method]] # matrix to make approximations of
+  n = nrow(cur_mat); m = ncol(cur_mat)
+  # === matrix completion methods (linear reg, softImpute)
+  # --- Linear Reg
+  estimate_matapprox[[est_method]][['matcomp_linearreg']] =  
+                   matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+  for(i in 1:n) {
+    for(j in 1:m) {
+      estimate_matapprox[[est_method]][['matcomp_linearreg']][i,j] = linearreg(cur_mat, i, j)
+    }
+  }
+  estimate_matapprox_plots[[est_method]][['matcomp_linearreg']] = display_matrix(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+  
+  
+  # --- softImpute
+  estimate_matapprox      [[est_method]][['matcomp_softImpute']] = list()
+  estimate_matapprox_plots[[est_method]][['matcomp_softImpute']] = list()
+  for(r in ranks) {
+    estimate_matapprox[[est_method]][['matcomp_softImpute']][[r]] = 
+                   matrix(NA, nrow = n, ncol = m, dimnames = list(matrix_rownames, matrix_colnames))
+    matcomp_fun = create_matrix_completion_softImpute(X = cur_mat, rank_max = r, type = 'als') 
+    for(i in 1:n) {
+      for(j in 1:m) {
+        estimate_matapprox[[est_method]][['matcomp_softImpute']][[r]][i,j] = matcomp_fun(i, j)
+      }
+    }
+    estimate_matapprox_plots[[est_method]][['matcomp_softImpute']][[r]] =
+                            display_matrix(estimate_matapprox[[est_method]][['matcomp_softImpute']][[r]])
+  }
+  
+  
+  # === matrix decomposition methods (svd, sparse svd, etc...)
+  estimate_matapprox[[est_method]][['matdecomp_svd']]             = list()
+  estimate_matapprox[[est_method]][['matdecomp_sparsesvd']]       = list()
+  estimate_matapprox_plots[[est_method]][['matdecomp_svd']]       = list()
+  estimate_matapprox_plots[[est_method]][['matdecomp_sparsesvd']] = list()
+  
+  svdres = svd(cur_mat, nu = max(ranks), nv = max(ranks))
+  cv.out = PMA::SPC.cv(cur_mat, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10))
+  pmd_res = PMA::SPC(cur_mat, sumabsv=cv.out$bestsumabsv, K = max(ranks))
+  for(r in ranks) {
+    # --- SVD
+    cur_matapprox = svdres$u[, 1:r, drop=FALSE] %*% diag(svdres$d[1:r], nrow=r, ncol=r) %*% t(svdres$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+    row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+    estimate_matapprox[[est_method]][['matdecomp_svd']][[r]] = cur_matapprox
+    estimate_matapprox_plots[[est_method]][['matdecomp_svd']][[r]] = display_matrix(cur_matapprox)
+    rm(cur_matapprox)
+    
+    # --- Sparse SVD
+    cur_matapprox = pmd_res$u[, 1:r, drop=FALSE] %*% diag(pmd_res$d[1:r], nrow=r, ncol=r) %*% t(pmd_res$v[, 1:r, drop=FALSE]) # take up to r eigenvectors
+    row.names(cur_matapprox) = matrix_rownames; colnames(cur_matapprox) = matrix_colnames
+    estimate_matapprox[[est_method]][['matdecomp_sparsesvd']][[r]] = cur_matapprox
+    estimate_matapprox_plots[[est_method]][['matdecomp_sparsesvd']][[r]] = display_matrix(cur_matapprox)
+    rm(cur_matapprox)
+    
+  }
+}
+
+}
+
+
+
+
+# EBCI to arbitrary point
+
+
+# use shrink_matrix from utils/matrix_shrinkage.r
+t0 = Sys.time()
+shrinkage_results = list()
+for(est_method in names(estimate_matapprox)) {
+  shrinkage_results[[est_method]] = list()
+  
+  cur_estimates_mat = est_effects_matrices[[est_method]][['train']] # matrix of estimates to shrink
+  cur_se_mat        = est_se_matrices[[est_method]][['train']]      # matrix of se's of est to shrink
+  
+  for(approx_method in names(estimate_matapprox[[est_method]][['test']])) {
+    # # could test by using: is.matrix or is.list
+    # is.matrix(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+    # is.matrix(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+    # is.list(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+    # is.list(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+    
+    # if there are not ranks (eg linearreg)
+    if(is.matrix(estimate_matapprox[[est_method]][['test']][[approx_method]])) {
+      cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['test']][[approx_method]]
+      
+      # shrink matrix
+      cur_shrink_res = 
+        shrink_matrix(unshrunk_mat = cur_estimates_mat,
+                    shrinkpoint_mat = cur_shrinkagepoint_mat,
+                    se_mat = cur_se_mat,
+                    ALPHA = ALPHA,
+                    return_ebci_obj=FALSE,
+                    weight_mat=NULL)
+      # add true theta values
+      cur_shrink_res = merge(cur_shrink_res, 
+                             reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
+                             by = c('grna', 'gene'))
+      # add idx for plotting later
+      cur_shrink_res = merge(merge(cur_shrink_res, 
+                                   data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                                   by = 'grna'), 
+                             data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                             by = 'gene')
+      # save result
+      shrinkage_results[[est_method]][[approx_method]] = cur_shrink_res
+
+      
+    } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+      for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+        cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['test']][[approx_method]][[r]]
+        # shrink matrix
+        cur_shrink_res = 
+          shrink_matrix(unshrunk_mat = cur_estimates_mat,
+                      shrinkpoint_mat = cur_shrinkagepoint_mat,
+                      se_mat = cur_se_mat,
+                      ALPHA = ALPHA,
+                      return_ebci_obj=FALSE,
+                      weight_mat=NULL)
+        # add true theta values
+        cur_shrink_res = merge(cur_shrink_res, 
+                               reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
+                               by = c('grna', 'gene'))
+        # add idx for plotting later
+        cur_shrink_res = merge(merge(cur_shrink_res, 
+                                     data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
+                                     by = 'grna'), 
+                               data.frame(x_idx = 1:length(matrix_colnames), gene = matrix_colnames),
+                               by = 'gene')
+        # save result
+        shrinkage_results[[est_method]][[approx_method]][[r]] = cur_shrink_res
+        
+      }
+      
+    }
+  }
+}
+t1 = Sys.time(); print(t1 - t0)
+
+
+
+
+
+
+
+# plot the results (estimated vs true)
+
+# use plot_shrink_results from utils/matrix_shrinkage.r
+t0 = Sys.time()
+# shrinkage_plots_results = list()
+shrinkage_plots_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
+for(est_method in names(shrinkage_results)) { # pois or nb
+  
+  assertthat::assert_that(dir.exists(shrinkage_plots_folder))
+  
+  for(approx_method in names(shrinkage_results[[est_method]])) {
+    # # could test by using: is.matrix or is.list... should use list so it is consistent across different loops
+    # is.matrix(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+    # is.matrix(shrinkage_results[[est_method]][['matcomp_linearreg']])
+    # is.list(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+    # is.list(shrinkage_results[[est_method]][['matcomp_linearreg']])
+    # is.data.frame(shrinkage_results[[est_method]][['matdecomp_sparsesvd']])
+    # is.data.frame(shrinkage_results[[est_method]][['matcomp_linearreg']])
+    
+    # if there are not ranks (eg linearreg)
+    if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+      cur_shrinkage_plots_folder = sprintf('%s%s/', shrinkage_plots_folder, approx_method)
+      dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
+      cur_shrink_res = shrinkage_results[[est_method]][[approx_method]]
+      
+      plot_shrink_results(shrink_df      = cur_shrink_res, 
+                            plot_folder    = cur_shrinkage_plots_folder, 
+                            order_rowscols = FALSE, 
+                            grna_index     = NULL, 
+                            gene_index     = NULL, 
+                            unshrunk_ALPHA = ALPHA)
+      
+      
+      
+    } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+      for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+        cur_shrinkage_plots_folder = sprintf('%s/%s_%02.f/', shrinkage_plots_folder, approx_method, r)
+        dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
+        cur_shrink_res = shrinkage_results[[est_method]][[approx_method]][[r]]
+        
+        plot_shrink_results(shrink_df      = cur_shrink_res, 
+                            plot_folder    = cur_shrinkage_plots_folder, 
+                            order_rowscols = FALSE, 
+                            grna_index     = NULL, 
+                            gene_index     = NULL, 
+                            unshrunk_ALPHA = ALPHA)
+      }
+    }
+    
+
+  }
+}
+t1 = Sys.time(); print(t1 - t0)
+
+
+
+
+
+saveRDS(object = shrinkage_results, file = sprintf('%sshrinkage_results.rds', shrinkage_plots_folder))
+
+
+
+```
+
+
+
+```{r eval=FALSE}
+ 
+# make new plots to compare results
+
+# # ok just do it  by hand
+# chosen_rank_to_plot = 3 # choose a rank for the plots
+# est_method = 'nb'
+# est_effects_matrices[[est_method]]
+# shrinkage_results[[est_method]]  
+
+
+
+
+
+
+
+```
+
+
+
+
+
+```{r eval=FALSE}
+
+# add original estimates ---------------------------------------------------
+# (all the loaded dfs should have these) (2x for plotting)
+
+
+plot_df = rbind(shrink_df |> 
+                  dplyr::mutate(approxmethod = 'shrunk'),
+                shrink_df |>
+                  dplyr::mutate(rank = 'unshrunk') |>
+                  dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                shrunk_value    = unshrunk_value, 
+                                lower_ci        = unshrunk_value - qnorm(.95) * se,
+                                upper_ci        = unshrunk_value + qnorm(.95) * se) 
+)
+n_subsample = 100 # subsample for display
+
+ # === Shrinkage Changes ===
+  
+  set.seed(12345)
+  subsample_idx = sample(1:nrow(plot_df), min(10000, nrow(plot_df)))
+  
+  # plot shrunk vs unshrunk
+  p1 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray', alpha = .6) +
+    geom_point(aes(x = unshrunk_value, y = shrunk_value, color = se)) +
+    labs(title = 'Shrunk vs Unshrunk Estimates', x = 'unshrunk', y = 'shrunk') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p1, filename = sprintf('%spoints/shrunkvsunshrunk.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  # plot shrunk vs unshrunk centered
+  p2 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray') +
+    geom_point(aes(x = unshrunk_value - shrinkage_point, y = shrunk_value - shrinkage_point, color = se)) +
+    labs(title = 'Shrunk vs Unshrunk Estimates Centered', x = 'unshrunk - shrinkage point', y = 'shrunk - shrinkage point') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p2, filename = sprintf('%spoints/shrunkvsunshrunkcent.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  # plot unshrunk vs shrinkage point
+  p3 = ggplot(plot_df[subsample_idx, ] |> filter(rank != 'unshrunk')) +
+    geom_abline(aes(slope = 1, intercept = 0), color = 'gray') +
+    geom_point(aes(x = shrunk_value, y = shrinkage_point, color = se)) +
+    labs(title = 'Shrinkage Point vs Shrunk Estimates', x = 'shrunk', y = 'shrinkage point') +
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p3, filename =sprintf('%spoints/shrinkptvsshrunk.pdf', plot_folder), height = 6, width = 7)
+  
+  
+  
+  
+  
+  
+  
+  # === Shrinkage CIs ===
+  set.seed(12345)
+  # get the same gene/grna tests across all methods and ranks (to be better visually, should do to prev plots too)
+  sample_tests = plot_df |> filter(rank == 'unshrunk') |> slice_sample(n = 15) |> select(grna, gene) |> mutate(x = 1:n())
+  plot_df_sample = merge(plot_df, sample_tests, all.x = FALSE, all.y = TRUE)
+  
+  # plot_df_sample |> group_by(approxmethod, rank) |> summarize(count = n()) # should all be nrow(sample_tests)
+  
+  
+  p_CI = ggplot(plot_df_sample # |> filter(rank == 'rank=15' & approxmethod == 'lowrank') #|> 
+                # slice(seq(from = 1, to = n(), by = floor(n()/400))) |>
+                # slice(sample_idx) |>
+                # mutate(# test = factor(test, levels = c('negative', 'positive', 'discovery')),
+                #        x = 1:n()),
+                ,
+                aes(x = x)) +
+    # geom_point(aes(y = lower_ci) )+
+    # geom_point(aes(y = upper_ci)) +
+    # geom_point(aes(y = -1.5)) +
+    # geom_hline(aes(yintercept = 0)) +
+    # ---- Shrunk CIs ---
+    geom_segment(aes(x = x + .25, y = lower_ci, yend = upper_ci),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    # --- Unshrunk CIs ---
+    geom_segment(aes(x = x, 
+                     y    = unshrunk_value - qnorm(.95)*se, 
+                     yend = unshrunk_value + qnorm(.95)*se),
+                 lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue2') +
+    # geom_segment(aes(y    = eval(parse(text = CIlower_colname)), 
+    #                  yend = eval(parse(text = CIupper_colname))),
+    #              lineend = 'square', linewidth = 1, alpha = .7, color = 'deepskyblue4') +
+    
+    # --- Arrow showing shrinkage
+    geom_segment(aes(x = x, xend = x+.2,
+                     y =    unshrunk_value, 
+                     yend = .99 * shrunk_value + .01 * unshrunk_value),
+                 lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+                 linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    # geom_segment(aes(y = eval(parse(text = unshrunk_colname)), 
+    #                  yend = .99 * eval(parse(text = shrunk_colname)) + 
+    #                    .01 * eval(parse(text = unshrunk_colname))),
+    #              lineend = 'square', linejoin = 'bevel', arrow = arrow(length = unit(0.2,"cm")),
+    #              linewidth = .3, alpha = .7, color = 'deepskyblue2') +
+    # --- Unshrunk Point---
+    geom_point(aes(x = x      , y = unshrunk_value), color = 'deepskyblue2') +
+    # --- Shrunk Point ---
+    geom_point(aes(x = x + .25, y = shrunk_value), shape=18, color = 'deepskyblue4') +
+    # --- Shrinkage Point---
+    geom_point(aes(x = x + .25, y = shrinkage_point), shape=5, color = 'deepskyblue4') +
+    # geom_point(aes(y = eval(parse(text = unshrunk_colname))), color = 'deepskyblue2') +
+    # geom_point(aes(y = eval(parse(text =   shrunk_colname))), color = 'deepskyblue4') +
+    scale_x_continuous(expand = c(0, 0), breaks = seq(0, 1000, by = 10),
+                       # limits = c(1, 90)) +
+                       # limits = c(65, 175)) +
+                       # limits = c(95, 400)) +
+                       # limits = c(1, 400)) +
+    ) +
+    # scale_y_continuous(expand = c(0.025, 0)) +
+    coord_cartesian(ylim = c(-2, 2)) +
+    labs(x = 'AY Test', y = 'Estimates',
+         title = 'Before and After Robust EBCI') +
+    facet_grid(# rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_bw() +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_blank(),
+          # legend.position = 'inside',
+          # legend.position.inside = legend_position,
+          legend.background = element_rect(color = 'black'))
+  
+  
+  # ggsave(plot = p_CI, filename = sprintf('%spoints/CIs.pdf', plot_folder), height = 6, width = 15)
+  ggsave(plot = p_CI, filename = sprintf('%sCIs.pdf', plot_folder), height = 6, width = 15)
+  
+  # 90% CI lengths before and after 
+  set.seed(12345)
+  p_CI_len = ggplot(plot_df[sample(x=1:nrow(plot_df), size = min(10000, nrow(plot_df))), ] |> 
+                      mutate(unshrunk_ci_length = 2*qnorm(.95)*se,
+                             shrunk_ci_length = upper_ci - lower_ci)) +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    geom_point(aes(x = unshrunk_ci_length, y = shrunk_ci_length), alpha = .8) +
+    labs(x = 'Unshrunk CI Lengths', y = 'Shrunk CI Lengths', title = 'CI Lengths') +
+    facet_grid(#rows = vars(approxmethod),
+      cols = vars(rank)) +
+    theme_classic()
+  
+  # ggsave(plot = p_CI_len, filename =sprintf('%spoints/CIlen.pdf', plot_folder), height = 6, width = 7)
+  ggsave(plot = p_CI_len, filename =sprintf('%s/CIlen.pdf', plot_folder), height = 6, width = 7)
+  
+
+
+
+
+
+```
+
+
+
+
+```{r eval=FALSE}
+# testing stuff 
+
+
+if(F) {
+  set.seed(1234)
+se = runif(n=100, min=.01, max=2)
+theta = runif(n=100, min=-1, max=1)
+simData = data.frame(unshrunk_value = mapply(FUN = rnorm, n=1, mean = theta, sd = se),
+                     se = se)
+
+simData = perf_simple_ebci(simData, formula = 'unshrunk_value ~ 0')
+
+
+gridExtra::grid.arrange(grobs = make_plots(simData), nrow = 2)
+
+  dim(grna)
+dim(Theta)
+
+t(grna) %*% Theta 
+dim(t(grna) %*% Theta)
+table(t(grna) %*% Theta)
+
+# testing glm simulation gives correct effects 
+set.seed(123)
+sim_df = data.frame(A = rbinom(n = 1000, size = 1, prob = .5))
+constant_coef = 1
+treatment_effect = .5
+effects_mat = matrix(c(treatment_effect), nrow = 1, ncol = 1)
+
+
+# pois
+sim_df$Y_pois = rpois(n=nrow(sim_df), lambda = exp(constant_coef + sim_df$A %*% effects_mat)) # will be larger matrix w mult treatments
+# pois_fit = glm.fit(x=sim_df[,c('A'), drop=FALSE], y = sim_df$Y, family = poisson())
+pois_fit = glm(formula = 'Y_pois ~ 1 + A', data = sim_df, family = poisson())
+
+# negative binomial
+# nb=number of bern(p) flips until size successes
+# mean mu = size * (1-p)/p , and variance mu/p 
+sim_df$Y_nb = rnbinom(n=nrow(sim_df), size = 3,  mu = exp(constant_coef + sim_df$A %*% effects_mat))
+nb_fit = MASS::glm.nb(formula = 'Y_nb ~ 1 + A', data = sim_df)
+
+ggplot(reshape2::melt(sim_df, id.vars = c('A'), measure.vars = c('Y_pois', 'Y_nb'), variable.name = 'distribution', value.name = 'value')) + 
+  geom_histogram(aes(x = value), binwidth = 1, color = 'black', fill = 'gray') + 
+  facet_grid(distribution ~ A) +
+  theme_bw() +
+  theme(panel.grid.minor = element_blank())
+
+
+
+
+
+
+
+pois_fit$coefficients
+nb_fit$coefficients
+
+
+rpois(n=5, lambda=c(1, 2, 3, 4, 5))
+sim_df$A %*% matrix(c(2), nrow = 1, ncol = 1) # will be larger matrix w mult treatments
+
+
+
+}
+
+```
+

@@ -807,8 +807,8 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
           legend.background = element_rect(color = 'black'))
   
   
-  ggsave(plot = p_CI, filename = sprintf('%spoints/CIs.pdf', plot_folder), height = 6, width = 15)
-  
+  # ggsave(plot = p_CI, filename = sprintf('%spoints/CIs.pdf', plot_folder), height = 6, width = 15)
+  ggsave(plot = p_CI, filename = sprintf('%sCIs.pdf', plot_folder), height = 6, width = 15)
   
   # 90% CI lengths before and after 
   set.seed(12345)
@@ -822,8 +822,8 @@ plot_shrink_results <- function(shrink_df, plot_folder, order_rowscols=TRUE, grn
       cols = vars(rank)) +
     theme_classic()
   
-  
-  ggsave(plot = p_CI_len, filename =sprintf('%spoints/CIlen.pdf', plot_folder), height = 6, width = 7)
+  # ggsave(plot = p_CI_len, filename =sprintf('%spoints/CIlen.pdf', plot_folder), height = 6, width = 7)
+  ggsave(plot = p_CI_len, filename =sprintf('%s/CIlen.pdf', plot_folder), height = 6, width = 7)
   
   
   # plot all together

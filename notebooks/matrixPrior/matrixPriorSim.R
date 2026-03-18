@@ -68,13 +68,13 @@ grobC_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2),
 
 
 
-# D: Hard case- strong signal, large noise, large matrix
+# D: Larger matrix case- strong signal, small noise, large matrix
 r = 5
 n = 100
 m = 50
 set.seed(12345)
 M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
-noise_sd = runif(n*m, min=5, max=15)            # sd of the noise
+noise_sd = runif(n*m, min=.01, max=5)            # sd of the noise
 
 
 grobD = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
@@ -83,14 +83,13 @@ grobD = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
 grobD_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
                                                  save_folder=sprintf('%s/D/', save_folder))
 
-# E: Hard case- strong signal, larger noise, large matrix
+# E: harder Larger matrix case- strong signal, medium noise, large matrix
 r = 5
 n = 100
 m = 50
 set.seed(12345)
 M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
-noise_sd = runif(n*m, min=30, max=50)             # sd of the noise
-
+noise_sd = runif(n*m, min=1, max=8)            # sd of the noise
 
 grobE = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
                      save_folder=sprintf('%s/E/', save_folder))
@@ -101,12 +100,20 @@ grobE_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2),
 
 
 
+# F: hardest Larger matrix case- strong signal, very large noise, large matrix
+r = 5
+n = 100
+m = 50
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
+noise_sd = runif(n*m, min=3, max=12)            # sd of the noise
 
 
+grobD = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                                 save_folder=sprintf('%s/F/', save_folder))
 
-
-
-
+grobD_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/F/', save_folder))
 
 
 
@@ -117,7 +124,7 @@ grobE_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2),
 
 
 ################################## Test Matrix Completion ################################################# 
-# test our implementation, hich is simplified bc e only have 1 element missing, 
+# test our implementation, which is simplified bc we only have 1 element missing, 
 # so e use some linear regression procedure
 
 
@@ -128,8 +135,8 @@ set.seed(12345)
 # M = create_lowrank_matrix(r=r, n=n, m=m)
 M = create_blocky_matrix(r=r, n=n, m=m) 
 svd_maxrank = r
-noise_sd_s = seq(from = 0, to = .5, length.out = 5)
-
+# noise_sd_s = seq(from = 0, to = .5, length.out = 5)
+noise_sd_s = seq(from = 0, to = 2, length.out = 5)
 
 M_obs_plots = list()
 noise_label_plots = list()

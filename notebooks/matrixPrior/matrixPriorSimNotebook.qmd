@@ -1,0 +1,669 @@
+---
+title: "matrixPriorSimNotebook"
+format: 
+  html:
+    theme: Sandstone
+    toc: true
+    code-fold: true
+    code-tools: true
+    code-block-border-left: true
+    code-block-bg: true
+    self-contained: true
+editor: source
+---
+
+# Load
+
+
+
+```{r}
+#| warning: false
+
+version
+library(ggplot2)
+library(latex2exp)
+ggplot2::set_theme(theme_bw())
+library(PMA)
+library(softImpute)
+
+source('./matrixPrior_utils.R') # util functions for running the simulation
+
+
+save_folder = "C:/Users/Cathe/Documents/School/Genetic Hypothesis Testing using Negative Controls/multilevel-treatment-multivariable-outcome-github/multilevel-treatment-multivariable-outcome/plots/matrixPrior/sim/"
+```
+
+
+# Setup
+
+True `effects' matrix $M \in \mathbb{R}^{n\times m}$ with rank $r\in\mathbb{N}$.
+
+Observed values $Y=M+E$ with independent noise $E_{ij} \sim N(0, \sigma_{ij}^2)$.
+
+
+
+
+
+# Simulation with Estimating Structured Matrix
+
+```{r}
+#| label: testMatrixEstimation
+#| output: false
+#| warning: false
+
+################################## Test Matrix Estimation ################################################# 
+# test methods of estimating the structured matrix
+# SVD, sparse SVD (Mat Decomp)
+# linear reg (our implementation), and softImpute (Mat Comp where there is 1 element missing) 
+
+{
+r = 5
+n = 15
+m = 10
+set.seed(12345)
+# M = create_lowrank_matrix(r=r, n=n, m=m)
+M = create_blocky_matrix(r=r, n=n, m=m) 
+svd_maxrank = r
+# noise_sd_s = seq(from = 0, to = .5, length.out = 5)
+noise_sd_s = seq(from = 0, to = 2, length.out = 5)
+
+M_obs_plots = list()
+noise_label_plots = list()
+X_mcomp_linearreg_list = list()
+X_mcomp_linearreg_plots = list()
+X_mcomp_softImpute_list = list()
+X_mcomp_softImpute_plots = list()
+X_svd_plots = list()
+X_ssvd_plots = list()
+
+for(noise_sd_s_ in noise_sd_s) {
+  print(noise_sd_s_)
+  # observed Matrices
+  noise_sd = rep(noise_sd_s_, times = n*m) 
+  M_obs    = M + matrix(rnorm(n = length(noise_sd), mean = 0, sd = noise_sd),
+                     nrow = n, ncol = m, byrow = TRUE) # display_matrix(M_obs) 
+  noise_label_plots[[as.character(noise_sd_s_)]] <- local({
+    noise_sd_s_ <- noise_sd_s_
+    ggplot() + geom_text(aes(x=0, y=0, label = sprintf('noise sd:\n%.2f', noise_sd_s_)), size = 15) + theme_void()
+  })
+  # noise_sd_s_text = sprintf('noise sd:\n%.2f', noise_sd_s_)
+  # noise_label_plots[[as.character(noise_sd_s_)]] = ggplot() + geom_text(aes(x=0, y=0, label = noise_sd_s_text), size = 15) + theme_void()
+  
+  
+  
+  # === Construct X matrices from matrix completion (linear reg, softImpute)
+  # --- Linear Reg
+  X_mcomp_linearreg_list[[as.character(noise_sd_s_)]] = matrix(NA, nrow = n, ncol = m)
+  for(i in 1:n) {
+    for(j in 1:m) {
+      # LR: X is linearreg
+      X_mcomp_linearreg_list[[as.character(noise_sd_s_)]][i,j] = linearreg(M_obs, i, j)
+    }
+  }
+  M_obs_plots[[as.character(noise_sd_s_)]] = display_matrix(M_obs)
+  X_mcomp_linearreg_plots[[as.character(noise_sd_s_)]] = display_matrix(X_mcomp_linearreg_list[[as.character(noise_sd_s_)]])
+  
+  
+  # --- softImpute
+  X_mcomp_softImpute_list[[as.character(noise_sd_s_)]] = matrix(NA, nrow = n, ncol = m)
+  matcomp_fun = create_matrix_completion_softImpute(X = M_obs, rank_max = svd_maxrank, type = 'als')
+  for(i in 1:n) {
+    for(j in 1:m) {
+      # LR: X is softImpute(d)
+      X_mcomp_softImpute_list[[as.character(noise_sd_s_)]][i,j] = matcomp_fun(i, j)
+    }
+  }
+  M_obs_plots[[as.character(noise_sd_s_)]] = display_matrix(M_obs)
+  X_mcomp_softImpute_plots[[as.character(noise_sd_s_)]] = display_matrix(X_mcomp_softImpute_list[[as.character(noise_sd_s_)]])
+  
+  # === Construct X matrices from decomp (svd, sparse svd, etc...)
+  # --- SVD
+  svdres = svd(M_obs, nu = svd_maxrank, nv = svd_maxrank)
+  X_svd  = svdres$u %*% diag(svdres$d[1:svd_maxrank]) %*% t(svdres$v)
+  X_svd_plots[[as.character(noise_sd_s_)]] = display_matrix(X_svd)
+  
+  # --- Sparse SVD
+  cv.out = PMA::SPC.cv(M_obs, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10))
+  pmd_res = PMA::SPC(M_obs, sumabsv=cv.out$bestsumabsv, K = svd_maxrank)
+  X_sparse_svd = pmd_res$u %*% diag(pmd_res$d) %*% t(pmd_res$v)
+  X_ssvd_plots[[as.character(noise_sd_s_)]] = display_matrix(X_sparse_svd)
+  
+  rm(noise_sd_s_)
+}
+
+
+
+# plot labels
+p_label_Mobs  = ggplot() + geom_text(aes(x=0, y=0, label = 'Observed\nMatrix'), size = 12) + theme_void()
+p_label_Mcomp_linearreg  = ggplot() + geom_text(aes(x=0, y=0, label = 'Matrix Completion\nLinear Reg'), size = 12) + theme_void()
+p_label_Mcomp_softImpute = ggplot() + geom_text(aes(x=0, y=0, label = 'Matrix Completion\nsoftImpute'), size = 12) + theme_void()
+p_label_SVD = ggplot() + geom_text(aes(x=0, y=0, label = 'Matrix Decomp\nSVD'), size = 12) + theme_void()
+p_label_SSVD = ggplot() + geom_text(aes(x=0, y=0, label = 'Matrix Decomp\nSparse SVD'), size = 12) + theme_void()
+
+
+layout_matrix = cbind( matrix(c(NA, 6*length(noise_sd_s)+(1:5)),
+                              nrow = 6),
+                       matrix(1:(6*length(noise_sd_s)), 
+                              nrow = 6, byrow = TRUE))
+
+grob <- gridExtra::arrangeGrob(grobs = c(noise_label_plots, 
+                                         M_obs_plots, 
+                                         X_mcomp_linearreg_plots, 
+                                         X_mcomp_softImpute_plots,
+                                         X_svd_plots,
+                                         X_ssvd_plots,
+                                         p_label_Mobs, p_label_Mcomp_linearreg, p_label_Mcomp_softImpute, p_label_SVD, p_label_SSVD),
+                               layout_matrix = layout_matrix)
+
+
+
+gridExtra::grid.arrange(grob)
+ggsave(sprintf('%s/test_matcomp_linearreg.pdf', save_folder), grob, width = 24, height = 16)
+
+}
+```
+
+
+```{r}
+#| label: fig-testMatrixEstimation
+#| fig-cap: "Check Matrix Estimation Across various Methods and Noise Levels"
+#| fig.height: 16
+#| fig.width: 24
+#| echo: false
+
+gridExtra::grid.arrange(grob)
+```
+
+
+
+# Simulation with Hypothesis Testing
+
+## 1 Run
+
+### Setting A: 
+
+```{r}
+#| label: matrixpriorsimA
+#| output: false
+#| warning: false
+
+{
+# A: Easy case- large signal, small noise
+r = 5
+n = 15
+m = 10
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)     # the signal
+noise_sd = runif(n*m, min=.1, max=.5)              # sd of the noise
+
+
+grobA = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                                 save_folder=sprintf('%s/A/', save_folder))
+
+grobA_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/A/', save_folder))
+}
+```
+
+
+
+```{r}
+#| label: fig-A-split
+#| fig-cap: "Setting A with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobA)
+```
+
+```{r}
+#| label: fig-A-nosplit
+#| fig-cap: "Setting A without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobA_nosamplesplit)
+```
+
+
+
+### Setting B: 
+
+```{r}
+#| label: matrixpriorsimB
+#| output: false
+#| warning: false
+
+{
+# B: Medium case- ----- signal, medium noise
+r = 5
+n = 15
+m = 10
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)    # the signal
+noise_sd = runif(n*m, min=.2, max=2)              # sd of the noise
+
+
+grobB = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                     save_folder=sprintf('%s/B/', save_folder))
+
+grobB_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/B/', save_folder))
+}
+```
+
+
+
+```{r}
+#| label: fig-B-split
+#| fig-cap: "Setting B with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobB)
+```
+
+```{r}
+#| label: fig-B-nosplit
+#| fig-cap: "Setting B without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobB_nosamplesplit)
+```
+
+
+
+### Setting C: 
+
+```{r}
+#| label: matrixpriorsimC
+#| output: false
+#| warning: false
+
+{
+# C: Hard case- ----- signal, large noise
+r = 5
+n = 15
+m = 10
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)  # the signal
+noise_sd = runif(n*m, min=3, max=8)            # sd of the noise
+
+
+grobC = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                     save_folder=sprintf('%s/C/', save_folder))
+
+grobC_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/C/', save_folder))
+
+}
+```
+
+
+
+```{r}
+#| label: fig-C-split
+#| fig-cap: "Setting C with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobC)
+```
+
+```{r}
+#| label: fig-C-nosplit
+#| fig-cap: "Setting C without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobC_nosamplesplit)
+```
+
+
+
+### Setting D: 
+
+```{r}
+#| label: matrixpriorsimD
+#| output: false
+#| warning: false
+
+{
+# D: Larger matrix case- strong signal, small noise, large matrix
+r = 5
+n = 100
+m = 50
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
+noise_sd = runif(n*m, min=.01, max=5)             # sd of the noise
+
+
+grobD = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                     save_folder=sprintf('%s/D/', save_folder))
+
+grobD_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/D/', save_folder))
+}
+```
+
+
+
+```{r}
+#| label: fig-D-split
+#| fig-cap: "Setting D with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobD)
+```
+
+```{r}
+#| label: fig-D-nosplit
+#| fig-cap: "Setting D without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobD_nosamplesplit)
+```
+
+
+### Setting E: 
+
+```{r}
+#| label: matrixpriorsimE
+#| output: false
+#| warning: false
+
+{
+# E: harder Larger matrix case- strong signal, medium noise, large matrix
+r = 5
+n = 100
+m = 50
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
+noise_sd = runif(n*m, min=1, max=8)            # sd of the noise
+
+grobE = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                     save_folder=sprintf('%s/E/', save_folder))
+
+grobE_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/E/', save_folder))
+}
+```
+
+
+
+```{r}
+#| label: fig-E-split
+#| fig-cap: "Setting E with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobE)
+```
+
+```{r}
+#| label: fig-E-nosplit
+#| fig-cap: "Setting E without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobE_nosamplesplit)
+```
+
+
+
+
+### Setting F: 
+
+```{r}
+#| label: matrixpriorsimF
+#| output: false
+#| warning: false
+
+{
+# F: hardest Larger matrix case- strong signal, very large noise, large matrix
+r = 5
+n = 100
+m = 50
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)*5  # the signal
+noise_sd = runif(n*m, min=3, max=12)            # sd of the noise
+
+
+grobF = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                                 save_folder=sprintf('%s/F/', save_folder))
+
+grobF_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                 save_folder=sprintf('%s/F/', save_folder))
+}
+```
+
+
+
+```{r}
+#| label: fig-F-split
+#| fig-cap: "Setting F with Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobF)
+```
+
+```{r}
+#| label: fig-F-nosplit
+#| fig-cap: "Setting F without Sample Splitting"
+#| fig.width: 15
+#| fig.height: 12 
+#| echo: false
+gridExtra::grid.arrange(grobF_nosamplesplit)
+```
+
+
+
+
+
+
+## Many Runs
+
+
+How do we `average' across multiple runs?
+
+eg. suppose we have a vector of pvals from multiple runs: pval1, pval2, ..., pvalK. 
+
+
+```{r}
+rep_times = 20
+```
+
+
+### Setting A
+
+```{r}
+#| output: false
+#| warning: false
+
+
+# A: Easy case- large signal, small noise
+r = 5
+n = 15
+m = 10
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)     # the signal
+noise_sd = runif(n*m, min=.1, max=.5)              # sd of the noise
+
+
+pval_list_samplesplit   = list()
+pval_list_nosamplesplit = list()
+for(k in 1:rep_times) {
+  grobA = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+                                 save_folder=sprintf('%s/A/', save_folder), 
+                                 return_pvals = TRUE)
+
+  grobA_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+                                                   save_folder=sprintf('%s/A/', save_folder), 
+                                                   return_pvals=TRUE)
+  pval_list_samplesplit[[k]]   = grobA$pvals
+  pval_list_nosamplesplit[[k]] = grobA_nosamplesplit$pvals
+}
+
+
+
+# just take the average????
+avg_pval_list_samplesplit   = list()
+
+for(method in names(pval_list_samplesplit[[1]])) {
+  matrix_sum_samplesplit   = matrix(0, nrow = n, ncol = m)
+
+  for(k in 1:rep_times) {
+    matrix_sum_samplesplit    =   matrix_sum_samplesplit   + pval_list_samplesplit[[k]][[method]]
+    
+  }
+  avg_pval_list_samplesplit[[method]]   =   matrix_sum_samplesplit / rep_times
+}
+
+avg_pval_list_nosamplesplit = list()
+for(method in names(pval_list_nosamplesplit[[1]])) {
+  
+  matrix_sum_nosamplesplit = matrix(0, nrow = n, ncol = m)
+  for(k in 1:rep_times) {
+   
+    matrix_sum_nosamplesplit  = matrix_sum_nosamplesplit + pval_list_nosamplesplit[[k]][[method]]
+  }
+  avg_pval_list_nosamplesplit[[method]] = matrix_sum_nosamplesplit / rep_times
+}
+
+
+# taking a mean of uniform(0,1) is not uniform (ie even if we had a valid pvalue, taking the mean over many runs is not ideal)
+take_mean_of_unif <- function() {mean(runif(n=10, min = 0, max = 1))} # eg repeat sim X times, then take the avg pvals (should be close to .5, converges to .5 as nreps --> inft by lln)
+
+qqplot(replicate(100, expr = take_mean_of_unif()), runif(10000, min=0, max=1)); abline(a=0, b=1)
+qqplot(x = replicate(100, expr = take_mean_of_unif()), distribution = qunif)
+qqplot(qunif(ppoints(500), min=0, max=1),  y = replicate(100, expr = take_mean_of_unif())); abline(a=0, b=1)
+hist(replicate(100, expr = take_mean_of_unif()), xlim = c(0, 1))
+
+# maybe take the median? This is also not good, this would also --> .5 as nreps --> infty
+take_median_of_unif <- function() {median(runif(n=10, min = 0, max = 1))} # eg repeat sim X times, then take the avg pvals (should be close to .5, converges to .5 as nreps --> inft by lln)
+hist(replicate(100, expr = take_median_of_unif()), xlim = c(0, 1))
+
+
+# maybe just combine them all together?
+
+
+# put into array format
+pval_array_samplesplit = array(data=NA, dim = c(n, m, rep_times))
+pval_array_samplesplit[, , 2] = pval_list_nosamplesplit[[k]][[method]]
+
+
+plot_pvals_many(P = avg_pval_list_samplesplit,
+                M = M,  
+                method_colors = c('mediumpurple3', 'dodgerblue2', 'dodgerblue4', 'palegreen2', 'palegreen4', 'orangered2'))
+
+  
+plot_pvals_many(P = avg_pval_list_nosamplesplit,
+                M = M,  
+                method_colors = c('mediumpurple3', 'dodgerblue2', 'dodgerblue4', 'palegreen2', 'palegreen4', 'orangered2'))
+
+```
+
+
+```{r}
+
+Ps = pval_list_samplesplit
+
+#' @param Ps list of matrices of pvals to plot, named
+#' @param M true params (need to know which are actually 0) or matrix where 0s are in the right pos
+#' @param method_colors (vector) of color names for each of the method categories
+#' @param Ps_has_many_reps (boolean) whether Ps (list of pvalue matrices) has many repetitions done
+#'        if  TRUE, Ps is a list of list of matrices
+#'        if FALSE, Ps is a list of matrices
+plot_pvals_many <- function(Ps, M, method_colors=NULL, Ps_has_many_reps=FALSE) {
+  # P = pvals_svd
+  # P = pvals_standard
+  
+  
+  df = NULL
+  if(Ps_has_many_reps) {
+    for(k in 1:length(Ps)) {
+        for(p_name in names(Ps[[k]])) {
+            P = Ps[[k]][[p_name]]
+            dfP = reshape2::melt(P, c("x", "y"), value.name = "pval")
+            dfM = reshape2::melt(M, c("x", "y"), value.name = "theta")
+            df_ = merge(dfP, dfM, by = c('x', 'y'))
+            df_$method = p_name
+            df = rbind(df, df_)
+        }
+    }
+    df$method = factor(df$method, levels = names(P))
+  } else {
+    for(p_name in names(Ps)) {
+      P = Ps[[p_name]]
+      dfP = reshape2::melt(P, c("x", "y"), value.name = "pval")
+      dfM = reshape2::melt(M, c("x", "y"), value.name = "theta")
+      df_ = merge(dfP, dfM, by = c('x', 'y'))
+      df_$method = p_name
+      df = rbind(df, df_)
+      
+    }
+    df$method = factor(df$method, levels = names(Ps))
+  }
+  
+  
+  
+  
+  
+
+  
+  # null (theta = 0)
+  p_null = ggplot(df |> dplyr::filter(theta == 0) |> 
+                    dplyr::group_by(method) |>
+                    dplyr::arrange(pval) |> 
+                    dplyr::mutate(rej_rate = (1:dplyr::n())/dplyr::n()),
+                  aes(x = pval, y = rej_rate, group = method, color = method)) + 
+    geom_abline(aes(slope = 1, intercept = 0)) +
+    geom_point(alpha = .8, size = .6, key_glyph = "rect") +
+    geom_line() +
+    # scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    scale_color_discrete(palette = method_colors) + # NULL uses default colors
+    labs(title = 'Rejection Rate by p-value (qqplot)',
+         subtitle = '(when Theta=0)',
+         x = 'p-value', y = 'Rejection Rate')
+  
+  # alt (theta != 0)
+  p_alt = ggplot(df |> dplyr::filter(theta != 0) |> 
+                   dplyr::group_by(method) |>
+                   dplyr::arrange(pval) |> 
+                   dplyr::mutate(rej_rate = (1:dplyr::n())/dplyr::n()),
+                 aes(x = pval, y = rej_rate, group = method, color = method)) + 
+    geom_abline(aes(slope = 1, intercept = 0)) +
+    geom_point(alpha = .8, size = .6, key_glyph = "rect") +
+    geom_line() +
+    # scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    scale_color_discrete(palette = method_colors) + # NULL uses default colors
+    labs(title = 'Rejection Rate by p-value (qqplot)',
+         subtitle = '(when Theta!=0)',
+         x = 'p-value', y = 'Rejection Rate')
+  
+  
+  return(list(p_null=p_null, p_alt=p_alt))
+}
+
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

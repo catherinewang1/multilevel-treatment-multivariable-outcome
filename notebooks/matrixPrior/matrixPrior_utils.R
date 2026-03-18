@@ -164,7 +164,20 @@ calc_tstat_and_pval <- function(Yij, sij, thetaij, thetaij0) {
 }
 
 
-display_matrix <- function(X) {
+#' Make plot of matrix (as ggplot geom_tile)
+#' @param X (matrix) of values
+#' @param lower_limit (numeric) set a lower limit for X's value (max(X[i,j], lower_limit))
+#' @param upper_limit (numeric) set a upper limit for X's value (min(X[i,j], upper_limit))
+display_matrix <- function(X, lower_limit=NA, upper_limit=NA) {
+  # squash the values in X to be in [lower_limit, upper_limit] range
+  if(!is.na(upper_limit)) { 
+    X = pmin(X, upper_limit) #                X[i,j] <= upper_limit
+  } 
+  if(!is.na(lower_limit)) {
+    X = pmax(X, lower_limit) # lower_limit <= X[i,j] 
+  }
+  row.names(X) = 1:nrow(X)
+  colnames(X) = 1:ncol(X)
   ggplot(data=reshape2::melt(X, c("x", "y"), value.name = "z"),aes(x=x,y=y,fill=z)) + 
     scale_x_continuous(expand=c(0, 0)) +
     scale_y_continuous(expand=c(0, 0), transform = 'reverse') +
@@ -212,7 +225,7 @@ plot_pvals <- function(P, M) {
 }
 
 
-#' @param P list of matrices of pvals to plot, named
+#' @param Ps list of matrices of pvals to plot, named
 #' @param M true params (need to know which are actually 0) or matrix where 0s are in the right pos
 plot_pvals_many <- function(Ps, M, method_colors=NULL) {
   # P = pvals_svd
@@ -275,8 +288,12 @@ plot_pvals_many <- function(Ps, M, method_colors=NULL) {
 #' @param noise_sd (vector) of sd's for noise of M
 #' @param svd_maxrank (integer) positive integer indicating rank for svd decompositions
 #' @param save_folder (character) path to folder to save plots at '<save_folder>/all_nosamplesplit.pdf'
-#' @return plots as grob (use gridExtra::grid.arrange(grob) to view)
-sim_and_plot_nosamplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
+#' @param return_pvals (boolean) whether or not to also return the pvalues 
+#'                               (as a named list of matrices)
+#' @returns if return_pvals=FALSE, plots as a grob (from gridExtra::arrangeGrob, use 
+#'                                                  gridExtra::grid.arrange(grob) to view) 
+#'          if return_pvals=TRUE, a list with a grob and pvalues 
+sim_and_plot_nosamplesplit <- function(M, noise_sd, svd_maxrank, save_folder, return_pvals=FALSE) {
   # # debug
   # r = 5
   # n = 15
@@ -481,8 +498,19 @@ sim_and_plot_nosamplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
   
   gridExtra::grid.arrange(grob)
   ggsave(sprintf('%s/all_nosamplesplit.pdf', save_folder), grob, width = 18, height = 12)
-  return(grob)
   
+  if(!return_pvals) { # do not return pvals, only return the plots 
+    return(grob)
+  } else { # do return pvalues
+    # return list containint: plots, pvals (also as a list) 
+    return(list(plots=grob,
+                pvals=list('LR: True'        = pvals_true, # the input format for plot_pvals_many
+                           'LR: SVD'         = pvals_svd,
+                           'LR: Sparse SVD'  = pvals_ssvd,
+                           'LR: Mat Comp [Linear Reg]'     = pvals_mcomp_linearreg,
+                           'LR: Mat Comp [Soft Impute]'    = pvals_mcomp_softImpute,
+                           'Standard'                      = pvals_standard)          ))
+  }
 }
 
 
@@ -491,7 +519,13 @@ sim_and_plot_nosamplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
 #' @param noise_sd (vector) of sd's for noise of M
 #' @param svd_maxrank (integer) positive integer indicating rank for svd decompositions
 #' @param save_folder (character) path to folder to save plots at '<save_folder>/all.pdf'
-sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
+#' @param return_pvals (boolean) whether or not to also return the pvalues 
+#'                               (as a named list of matrices)
+#'                               (as a named list of matrices)
+#' @returns if return_pvals=FALSE, plots as a grob (from gridExtra::arrangeGrob, use 
+#'                                                  gridExtra::grid.arrange(grob) to view) 
+#'          if return_pvals=TRUE, a list with a grob and pvalues 
+sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder, return_pvals=FALSE) {
   # # debug
   # r = 5
   # n = 15
@@ -565,6 +599,7 @@ sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
         thetaij  = M[i,j], 
         thetaij0 = 0
       )
+      # if(M[i,j] != 0) {print(tstat_and_pval$pval)}
       # pvals_true[i,j] = runif(n=1, min = .001, max = .999) # test code
       pvals_true[i,j] = tstat_and_pval$pval ; rm(tstat_and_pval)
       
@@ -639,7 +674,7 @@ sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
   #                                       M = M, 
   #                                       method_colors = c('dodgerblue3', 'palegreen3', 'orangered2'))
   
-  p_pvals_all_qqplots = plot_pvals_many(P = list('LR: True'        = pvals_true,
+  p_pvals_all_qqplots = plot_pvals_many(Ps = list('LR: True'        = pvals_true,
                                                  'LR: SVD'         = pvals_svd,
                                                  'LR: Sparse SVD'  = pvals_ssvd,
                                                  'LR: Mat Comp [Linear Reg]'     = pvals_mcomp_linearreg,
@@ -664,7 +699,20 @@ sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder) {
                                                           13, 13, 14, 14, NA), byrow = TRUE, nrow = 5))
   gridExtra::grid.arrange(grob)
   ggsave(sprintf('%s/all_samplesplit.pdf', save_folder), grob, width = 15, height = 12)
-  return(grob)
+  
+  if(!return_pvals) { # do not return pvals, only return the plots 
+    return(grob)
+  } else { # do return pvalues
+    # return list containint: plots, pvals (also as a list) 
+    return(list(plots=grob,
+                pvals=list('LR: True'        = pvals_true, # the input format for plot_pvals_many
+                           'LR: SVD'         = pvals_svd,
+                           'LR: Sparse SVD'  = pvals_ssvd,
+                           'LR: Mat Comp [Linear Reg]'     = pvals_mcomp_linearreg,
+                           'LR: Mat Comp [Soft Impute]'    = pvals_mcomp_softImpute,
+                           'Standard (No Samp Split)'      = pvals_standard)          ))
+  }
+  
 }
 
 

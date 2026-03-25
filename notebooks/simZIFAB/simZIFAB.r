@@ -1143,6 +1143,21 @@ sim_and_plot(save_folder = paste0(save_folder_overall, "C/"),
              B=10000)
 
 
+set.seed(12345)
+EM_est_C = 
+  check_EM(save_folder = paste0(save_folder_overall, "C/"), 
+           G=1,
+           s=1.8*rbeta(1500, 2, 1) + .2, # range from .2 to 2
+           mu=1,
+           tau=2,
+           pi0=.3,
+           EM_iterations=100, 
+           NR_iterations=5,
+           samplesize_for_numsteps = 1000,
+           samplesizes = c(25, 50, 100,  250, 500, 1000, 1500),
+           nreps = 6)
+
+
 
 
 # simulation with larger si (s.t. standard has low power)

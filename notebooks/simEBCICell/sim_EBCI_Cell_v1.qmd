@@ -72,9 +72,6 @@ create_blocky_matrix <- function(r, n, m) {
 
 # Sim
 
-```{r}
-
-```
 
 
 ```{r}
@@ -233,18 +230,22 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
 
 
 #' Sim pois and nb cells w sample splitting and perform EBCI shrinkage on matrix approximations
-sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, ranks, save_folder=NULL) {
+sim_EBCI_celllevel <- function(ALPHA, P, G, rank, Theta,  N, N_control, pi_P,  nb_size, ranks, save_folder=NULL) {
   # constant_coef = 1 # overall mean (mean for untreated/control cells)
   constant_coef = runif(n = G, min = .1, max = 2) # overall mean across genes (mean for untreated/control cells)
   
-  # create names 
-  matrix_rownames = sprintf("grna%04.f", 1:P) # should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
-  matrix_colnames = sprintf("gene%04.f", 1:G)
-  
   # treatment effects 
-  Theta = create_blocky_matrix(r = rank, n = P, m = G)
+  if(is.null(Theta)) { # simulate true theta
+    Theta = create_blocky_matrix(r = rank, n = P, m = G)
+  } else { # use the given theta, overwrite input P and G
+    P = nrow(Theta)
+    G = ncol(Theta)
+  }
+  matrix_rownames = sprintf("grna%04.f", 1:P) # create names 
+  matrix_colnames = sprintf("gene%04.f", 1:G) # prob should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
   row.names(Theta) = matrix_rownames
   colnames(Theta) = matrix_colnames
+  
   
   # assign perturbation/grna treatment
   grna = list()
@@ -363,6 +364,14 @@ sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, r
                      value.name = 'upper_ci', varnames = c('grna', 'gene')), 
                   by = c('grna', 'gene')), 
             by = c('grna', 'gene'))
+    cur_df = merge(cur_df, 
+                   reshape2::melt(est_se_matrices[[est_method]][['all'  ]], 
+                                  value.name = 'se', varnames = c('grna', 'gene')),
+                    by = c('grna', 'gene'))
+    cur_df = merge(cur_df, 
+                   reshape2::melt(Theta, 
+                                  value.name = 'true_theta', varnames = c('grna', 'gene')),
+                    by = c('grna', 'gene'))
     cur_df = merge(merge(cur_df, 
                          data.frame(y_idx = 1:length(matrix_rownames), grna = matrix_rownames),
                          by = 'grna'), 
@@ -522,7 +531,9 @@ sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, r
   all_sim_results = list(est_effects_matrices=est_effects_matrices,
                          est_se_matrices=est_se_matrices,
                          estimate_matapprox=estimate_matapprox,
-                         shrinkage_results=shrinkage_results)
+                         shrinkage_results=shrinkage_results,
+                         allcells_results=allcells_results,
+                         Theta=Theta)
   
   
   if(!is.null(save_folder) && dir.exists(save_folder)) {
@@ -588,6 +599,65 @@ sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, r
                                color_limits = c(floor(min(Theta-.75)), ceiling(max(Theta+.75))))
       }
     }
+    
+    # 5.3 shrinkage changes
+    plot_df = NULL
+    for(est_method in names(shrinkage_results)) {
+      plot_df_ = shrinkage_results[[est_method]][['matcomp_linearreg']] |> # pick any (would be same)
+                        dplyr::mutate(method = 'unshrunk', rank = NA) |>
+                        dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                      shrunk_value    = unshrunk_value, 
+                                      lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+                                      upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se) 
+      plot_df_ = rbind(plot_df_, 
+                       allcells_results[[est_method]] |> # all cells
+                         dplyr::mutate(method = 'unshrunkallcells', rank = NA) |>
+                         dplyr::mutate(shrinkage_point = NA,   # set all values to the original estimates
+                                       weight = NA, 
+                                       shrunk_value    = estimate,
+                                       unshrunk_value  = estimate)  |> 
+                         dplyr::select(all_of(colnames(plot_df_))) )
+      for(approx_method in names(shrinkage_results[[est_method]])) {
+         # if there are not ranks (eg linearreg)
+          if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+            plot_df_ = rbind(plot_df_, 
+                            shrinkage_results[[est_method]][[approx_method]] |> 
+                            dplyr::mutate(method = approx_method, rank = NA))
+          } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+            for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+               plot_df_ = rbind(plot_df_, 
+                            shrinkage_results[[est_method]][[approx_method]][[r]] |> 
+                            dplyr::mutate(method = approx_method, rank = r))
+            }
+            
+          }
+      }
+      plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
+      rm(plot_df_)
+    }
+    
+    plot_df$method = factor(plot_df$method, 
+                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd"))
+    
+    # mse
+    p_mse = ggplot(plot_df |> 
+             group_by(sim_distn, method, rank) |> 
+             summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+             arrange(sim_distn, method, rank) |> 
+             mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))), 
+           aes(x = methodrank, y = mse)) +
+      geom_col(color = 'black', fill = 'gray') +
+      facet_grid(rows = vars(sim_distn), scales = 'free_y')
+    
+    
+    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 4)
+
   }
   
   
@@ -604,7 +674,7 @@ sim_EBCI_celllevel <- function(ALPHA, P, G, N, N_control, pi_P, rank, nb_size, r
 ```
 
 
-```{r}
+```{r output=FALSE}
 
 ALPHA = .1 # PARAMETER
 overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
@@ -614,76 +684,373 @@ overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_fo
 set.seed(12345)
 setting_name = 'A'
 P=5
+G=10
+rank=2
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
 pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
 sim_A_results = sim_EBCI_celllevel(
                    ALPHA=ALPHA,            # alpha testing level (for CIs)
                    P=P,                    # number of grnas/perturbations
-                   G=10,                   # number of genes
-                   N=1000,                 # number of treated cells
+                   G=G,                    # number of genes
+                   rank=rank,              # true rank of theta matrix
+                   Theta=Theta,            # true effects ( input NULL if want to simulate)
+                   N=500,                 # number of treated cells
                    N_control=500,          # number of control cells
                    pi_P=pi_P,              # propensity score for each treatment
-                   rank=2,                 # true rank of theta matrix
                    nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
                    ranks=c(1, 2, 3),       # ranks for matrix approximations
                    save_folder=save_folder # folder to save results and plots
 )
-t1 = Sys.time(); print(t1 - t0)
+t1 = Sys.time(); print(t1 - t0) # 4 mins
 
 # === SETTING B === (slightly larger, )
 set.seed(12345)
 setting_name = 'B'
-P = 10
+P=10
+G=20
+rank=3
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
 pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
-sim_B_results = sim_EBCI_celllevel(
+sim_A_results = sim_EBCI_celllevel(
                    ALPHA=ALPHA,            # alpha testing level (for CIs)
                    P=P,                    # number of grnas/perturbations
-                   G=20,                   # number of genes
-                   N=10000,                 # number of treated cells
-                   N_control=5000,          # number of control cells
+                   G=G,                    # number of genes
+                   rank=rank,              # true rank of theta matrix
+                   Theta=Theta,            # true effects ( input NULL if want to simulate)
+                   N=1000,                 # number of treated cells
+                   N_control=500,          # number of control cells
                    pi_P=pi_P,              # propensity score for each treatment
-                   rank=3,                 # true rank of theta matrix
                    nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3, 5),       # ranks for matrix approximations
-                   save_folder=NULL # folder to save results and plots
+                   ranks=c(1, 2, 3),       # ranks for matrix approximations
+                   save_folder=save_folder # folder to save results and plots
 )
-t1 = Sys.time(); print(t1 - t0) # ~4 mins without plots
+t1 = Sys.time(); print(t1 - t0) #  mins
 
 
-# === SETTING B === (even larger, )
+# === SETTING C === (even larger, )
 set.seed(12345)
-setting_name = 'B'
-P = 25
+setting_name = 'C'
+P=25
+G=200
+rank=3
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
 pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
-sim_B_results = sim_EBCI_celllevel(
+sim_A_results = sim_EBCI_celllevel(
                    ALPHA=ALPHA,            # alpha testing level (for CIs)
                    P=P,                    # number of grnas/perturbations
-                   G=200,                   # number of genes
-                   N=10000,                 # number of treated cells
-                   N_control=5000,          # number of control cells
+                   G=G,                    # number of genes
+                   rank=rank,              # true rank of theta matrix
+                   Theta=Theta,            # true effects ( input NULL if want to simulate)
+                   N=2500,                 # number of treated cells
+                   N_control=500,          # number of control cells
                    pi_P=pi_P,              # propensity score for each treatment
-                   rank=3,                 # true rank of theta matrix
                    nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3, 5),       # ranks for matrix approximations
-                   save_folder=NULL # folder to save results and plots
+                   ranks=c(1, 2, 3),       # ranks for matrix approximations
+                   save_folder=save_folder # folder to save results and plots
 )
-t1 = Sys.time(); print(t1 - t0) # 4 mins without plots
+t1 = Sys.time(); print(t1 - t0) # 12  mins
 
 
 
-if(!is.null(NULL) && dir.exists(NULL)) {
-  print('hi')
-}
+
+# === SETTING D === (even larger? )
+set.seed(12345)
+setting_name = 'D'
+P=50
+G=500
+rank=3
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+                   ALPHA=ALPHA,            # alpha testing level (for CIs)
+                   P=P,                    # number of grnas/perturbations
+                   G=G,                    # number of genes
+                   rank=rank,              # true rank of theta matrix
+                   Theta=Theta,            # true effects ( input NULL if want to simulate)
+                   N=5000,                 # number of treated cells
+                   N_control=500,          # number of control cells
+                   pi_P=pi_P,              # propensity score for each treatment
+                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+                   ranks=c(1, 2, 3),       # ranks for matrix approximations
+                   save_folder=save_folder # folder to save results and plots
+)
+t1 = Sys.time(); print(t1 - t0) # 12  mins
+
+
+
 
 ```
 
 
 # working out stuff
+
+```{r}
+# load in save and create sim specific plots
+save_folder = '../../plots/simEBCICell/D'
+sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+
+sim_results |> names()
+sim_results$shrinkage_results$nb |> names()
+
+ranks = 1:length(sim_results$shrinkage_results[['nb']][['matdecomp_svd']])
+allcells_mse = sim_results$estimate_matapprox
+
+    # 5.3 shrinkage changes
+    plot_df = NULL
+    for(est_method in names(sim_results$shrinkage_results)) {
+      plot_df_ = sim_results$shrinkage_results[[est_method]][['matcomp_linearreg']] |> # pick any (would be same)
+                        dplyr::mutate(method = 'unshrunk', rank = NA) |>
+                        dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                      shrunk_value    = unshrunk_value, 
+                                      lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+                                      upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se) 
+      plot_df_ = rbind(plot_df_, 
+                       sim_results$allcells_results[[est_method]] |> # all cells
+                         dplyr::mutate(method = 'unshrunkallcells', rank = NA) |>
+                         dplyr::mutate(shrinkage_point = NA,   # set all values to the original estimates
+                                       weight = NA, 
+                                       shrunk_value    = estimate,
+                                       unshrunk_value  = estimate)  |> 
+                         dplyr::select(all_of(colnames(plot_df_))) )
+      for(approx_method in names(sim_results$shrinkage_results[[est_method]])) {
+         # if there are not ranks (eg linearreg)
+          if(is.data.frame(sim_results$shrinkage_results[[est_method]][[approx_method]])) {
+            plot_df_ = rbind(plot_df_, 
+                            sim_results$shrinkage_results[[est_method]][[approx_method]] |> 
+                            dplyr::mutate(method = approx_method, rank = NA))
+          } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+            for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+               plot_df_ = rbind(plot_df_, 
+                            sim_results$shrinkage_results[[est_method]][[approx_method]][[r]] |> 
+                            dplyr::mutate(method = approx_method, rank = r))
+            }
+            
+          }
+      }
+      plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
+      rm(plot_df_)
+    }
+    
+    plot_df$method = factor(plot_df$method, 
+                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd"))
+    plot_df = plot_df |> mutate(is_sig = !((lower_ci <= 0) & (0 <= upper_ci)))
+    # mse
+    ggplot(plot_df |> 
+             group_by(sim_distn, method, rank) |> 
+             summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+             arrange(sim_distn, method, rank) |> 
+             mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))), 
+           aes(x = methodrank, y = mse)) +
+      geom_col(color = 'black', fill = 'gray') +
+      facet_grid(rows = vars(sim_distn), scales = 'free_y') +
+      coord_cartesian(ylim= c(0, .009)) +
+      labs(title = sprintf('MSE   %s', substr(save_folder, nchar(save_folder) - 1, nchar(save_folder)))) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+    
+    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), width = 6, height = 6)
+    
+    
+plot_df |> 
+         group_by(sim_distn, method, rank) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+         arrange(sim_distn, method, rank)
+  
+
+mse_table =        plot_df |> 
+         group_by(sim_distn, method, rank) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+         arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+
+
+# mse_table =        cbind(
+#   plot_df |> filter(sim_distn == 'pois') |>
+#          group_by(sim_distn, method, rank) |> 
+#          summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+#          arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+# , plot_df |> filter(sim_distn == 'nb') |>
+#          group_by(sim_distn, method, rank) |> 
+#          summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+#          arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+# )
+stargazer::stargazer(
+   mse_table,
+  summary = FALSE, 
+  out = sprintf('%s/mse_table.html', save_folder))
+
+
+
+# look at power and false positive rate
+
+ggplot(plot_df |>  mutate(test_type = sapply(true_theta, function(th) {if(th==0){'Null'} else {'Alt'}}))  |>
+  group_by(sim_distn, method, rank, test_type) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), 
+                   rejected = mean(is_sig),
+                   .groups = 'drop') |> 
+         arrange(sim_distn, method, rank, test_type) |> 
+         mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))),
+  aes(x = methodrank, y = rejected)) +
+  geom_hline(aes(yintercept = ALPHA), color = 'orange', alpha = .7) +
+  geom_col() +
+  facet_grid(cols = vars(test_type), rows = vars(sim_distn)) +
+  # coord_cartesian(ylim= c(0, .009)) +
+  labs(title = sprintf('Proportion of Tests Rejected   %s', substr(save_folder, nchar(save_folder) - 1, nchar(save_folder)))) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+
+ggsave(filename = sprintf('%s/shrinkage_rej.pdf', save_folder), width = 6, height = 6)
+```
+
+
+
+
+```{r}
+# read in saved results
+
+
+save_folder = '../../plots/simEBCICell/C'
+sim_results_C = readRDS(sprintf('%s/sim_results.rds', save_folder))
+
+sim_results_C |> names()
+sim_results_C$shrinkage_results$nb |> names()
+
+ranks = 1:length(sim_results_C$shrinkage_results[['nb']][['matdecomp_svd']])
+allcells_mse = sim_results_C$estimate_matapprox
+
+    # 5.3 shrinkage changes
+    plot_df = NULL
+    for(est_method in names(sim_results_C$shrinkage_results)) {
+      plot_df_ = sim_results_C$shrinkage_results[[est_method]][['matcomp_linearreg']] |> # pick any (would be same)
+                        dplyr::mutate(method = 'unshrunk', rank = NA) |>
+                        dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+                                      shrunk_value    = unshrunk_value, 
+                                      lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+                                      upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se) 
+      plot_df_ = rbind(plot_df_, 
+                       sim_results_C$allcells_results[[est_method]] |> # all cells
+                         dplyr::mutate(method = 'unshrunkallcells', rank = NA) |>
+                         dplyr::mutate(shrinkage_point = NA,   # set all values to the original estimates
+                                       weight = NA, 
+                                       shrunk_value    = estimate,
+                                       unshrunk_value  = estimate)  |> 
+                         dplyr::select(all_of(colnames(plot_df_))) )
+      for(approx_method in names(sim_results_C$shrinkage_results[[est_method]])) {
+         # if there are not ranks (eg linearreg)
+          if(is.data.frame(sim_results_C$shrinkage_results[[est_method]][[approx_method]])) {
+            plot_df_ = rbind(plot_df_, 
+                            sim_results_C$shrinkage_results[[est_method]][[approx_method]] |> 
+                            dplyr::mutate(method = approx_method, rank = NA))
+          } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+            for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+               plot_df_ = rbind(plot_df_, 
+                            sim_results_C$shrinkage_results[[est_method]][[approx_method]][[r]] |> 
+                            dplyr::mutate(method = approx_method, rank = r))
+            }
+            
+          }
+      }
+      plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
+      rm(plot_df_)
+    }
+    
+    plot_df$method = factor(plot_df$method, 
+                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd"))
+    plot_df = plot_df |> mutate(is_sig = !((lower_ci <= 0) & (0 <= upper_ci)))
+    # mse
+    ggplot(plot_df |> 
+             group_by(sim_distn, method, rank) |> 
+             summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+             arrange(sim_distn, method, rank) |> 
+             mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))), 
+           aes(x = methodrank, y = mse)) +
+      geom_col(color = 'black', fill = 'gray') +
+      facet_grid(rows = vars(sim_distn), scales = 'free_y') +
+      coord_cartesian(ylim= c(0, .5)) +
+      labs(title = sprintf('MSE   %s', substr(save_folder, nchar(save_folder) - 1, nchar(save_folder)))) +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+    
+    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), width = 6, height = 6)
+    
+    
+plot_df |> 
+         group_by(sim_distn, method, rank) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+         arrange(sim_distn, method, rank)
+  
+
+mse_table =        plot_df |> 
+         group_by(sim_distn, method, rank) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+         arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+
+
+# mse_table =        cbind(
+#   plot_df |> filter(sim_distn == 'pois') |>
+#          group_by(sim_distn, method, rank) |> 
+#          summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+#          arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+# , plot_df |> filter(sim_distn == 'nb') |>
+#          group_by(sim_distn, method, rank) |> 
+#          summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+#          arrange(sim_distn, method, rank) |> mutate(rank = replace_na(rank, 0)) |> as.data.frame()
+# )
+stargazer::stargazer(
+   mse_table,
+  summary = FALSE, 
+  out = sprintf('%s/mse_table.html', save_folder))
+
+# look at power and false positive rate
+
+ggplot(plot_df |>  mutate(test_type = sapply(true_theta, function(th) {if(th==0){'Null'} else {'Alt'}}))  |>
+  group_by(sim_distn, method, rank, test_type) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), 
+                   rejected = mean(is_sig),
+                   .groups = 'drop') |> 
+         arrange(sim_distn, method, rank, test_type) |> 
+         mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))),
+  aes(x = methodrank, y = rejected)) +
+  geom_hline(aes(yintercept = ALPHA), color = 'blue', alpha = .7) +
+  geom_col() +
+  facet_grid(cols = vars(test_type), rows = vars(sim_distn)) +
+  # coord_cartesian(ylim= c(0, .009)) +
+  labs(title = sprintf('Proportion of Tests Rejected   %s', substr(save_folder, nchar(save_folder) - 1, nchar(save_folder)))) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+
+ggsave(filename = sprintf('%s/shrinkage_rej.pdf', save_folder), width = 6, height = 6)
+
+```
+
+
 
 
 ```{r eval=FALSE}
@@ -719,10 +1086,25 @@ for(est_method in names(shrinkage_results)) {
   rm(plot_df_)
 }
 
+plot_df$method = factor(plot_df$method, 
+                        levels = c("unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd"))
+
+ggplot(plot_df |> 
+         group_by(sim_distn, method, rank) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+         arrange(sim_distn, method, rank) |> 
+         mutate(methodrank = factor(paste0(method, rank), 
+                                levels = c("unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks)))), 
+       aes(x = methodrank, y = mse)) +
+  geom_col(color = 'black', fill = 'gray') +
+  facet_grid(rows = vars(sim_distn), scales = 'free_y')
 
 
 
-plot_df |> group_by(sim_distn, method, rank) |> summarize(mse = mean((shrunk_value - true_theta)^2)) |> arrange(sim_distn, method, rank)
 
 ```
 

@@ -281,8 +281,8 @@ h3_1_approximate_matrix <- function(mat, method, ranks, Theta_rownames, Theta_co
     }
   } else if(method == 'matdecomp_sparsesvd') {
     mat_approx_res = list()
-    cv.out = PMA::SPC.cv(mat, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10))
-    pmd_res = PMA::SPC(mat, sumabsv=cv.out$bestsumabsv, K = max(ranks))
+    cv.out = PMA::SPC.cv(mat, sumabsvs = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10), trace=FALSE)
+    pmd_res = PMA::SPC(mat, sumabsv=cv.out$bestsumabsv, K = max(ranks), trace=FALSE)
     for(r in ranks) {
       # --- Sparse SVD
       cur_matapprox = pmd_res$u[, 1:r, drop=FALSE] %*% diag(pmd_res$d[1:r], nrow=r, ncol=r) %*% t(pmd_res$v[, 1:r, drop=FALSE]) # take up to r eigenvectors

@@ -52,8 +52,8 @@ sim_A_results = sim_EBCI_celllevel(
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
-  save_folder=save_folder, # folder to save results and plots
-  make_plots = FALSE
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = TRUE
 )
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
@@ -110,7 +110,8 @@ sim_A_results = sim_EBCI_celllevel(
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
-  save_folder=save_folder # folder to save results and plots
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -138,7 +139,8 @@ sim_A_results = sim_EBCI_celllevel(
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
-  save_folder=save_folder # folder to save results and plots
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -165,7 +167,8 @@ sim_A_results = sim_EBCI_celllevel(
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
-  save_folder=save_folder # folder to save results and plots
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) #
 
@@ -193,7 +196,8 @@ sim_A_results = sim_EBCI_celllevel(
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 3, 5),       # ranks for matrix approximations
-  save_folder=save_folder # folder to save results and plots
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 

@@ -865,7 +865,9 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
   if(!is.null(save_folder) && dir.exists(save_folder)) {
     # save simulated results
     saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder))
-    
+    plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks)
+
+
     # additionally, if we want to make plots
     if(make_plots) {
       # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
@@ -884,7 +886,6 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
       
       # 5.3 mse
       print('Part 5.3: ')
-      plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks)
       write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
       h5_3_plots_mse(plot_df=plot_df, ranks=ranks, save_folder=save_folder)
     }

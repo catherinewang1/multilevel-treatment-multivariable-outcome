@@ -53,7 +53,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
@@ -84,16 +84,16 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 1.4  mins without plots, 3.x with plots
 
 
-# === SETTING C === (even larger, )
+# === SETTING C === (more noise)
 set.seed(12345)
 setting_name = 'C'
-P=25
-G=200
+P=10
+G=20
 rank=3
 Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
 pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
@@ -105,13 +105,13 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=Theta,            # true effects ( input NULL if want to simulate)
-  N=2500,                 # number of treated cells
+  N=1000,                 # number of treated cells
   N_control=500,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -140,7 +140,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -168,7 +168,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) #
 
@@ -197,7 +197,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 3, 5),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE
+  make_plots = TRUE
 )
 t1 = Sys.time(); print(t1 - t0) # 
 

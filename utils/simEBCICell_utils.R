@@ -321,8 +321,8 @@ h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames=
   for(distn_name in c('pois', 'nb')) {
     estimate_matapprox      [[distn_name]] = list()
     
-    # for(split in c('train', 'test')) {
-    for(split in c('train')) { # only approx train split
+    # for(split in c('train', 'test', 'all')) {
+    for(split in c('train', 'all')) { # only approx train and all split
       estimate_matapprox[[distn_name]][[split]] = list()
       cur_mat = est_effects_matrices[[distn_name]][[split]] # matrix to make approximations of
       # n = nrow(cur_mat); m = ncol(cur_mat)
@@ -358,53 +358,44 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
   for(est_method in names(est_effects_matrices)) {
     shrinkage_results[[est_method]] = list()
     
-    cur_estimates_mat = est_effects_matrices[[est_method]][['test']] # matrix of estimates to shrink
-    cur_se_mat        =      est_se_matrices[[est_method]][['test']] # matrix of se's of est to shrink
+    # do 2 categories of shrinkage: sample split (train towards test), no sample split (all towards all)
+    for(splittype in c('samplesplit', 'nosamplesplit')) {
+      shrinkage_results[[est_method]][[splittype]] = list()
+
+      if(splittype == 'samplesplit') {
+          cur_estimates_mat = est_effects_matrices[[est_method]][['test']] # matrix of estimates to shrink
+          cur_se_mat        =      est_se_matrices[[est_method]][['test']] # matrix of se's of est to shrink
+      } else if(splittype == 'nosamplesplit') {
+          cur_estimates_mat = est_effects_matrices[[est_method]][['all']] # matrix of estimates to shrink
+          cur_se_mat        =      est_se_matrices[[est_method]][['all']] # matrix of se's of est to shrink
+      }
+
     
-    for(approx_method in names(estimate_matapprox[[est_method]][['train']])) {
-      # # could test by using: is.matrix or is.list
-      # is.matrix(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
-      # is.matrix(estimate_matapprox[[est_method]][['matcomp_linearreg']])
-      # is.list(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
-      # is.list(estimate_matapprox[[est_method]][['matcomp_linearreg']])
-      
-      # if there are not ranks (eg linearreg)
-      if(is.matrix(estimate_matapprox[[est_method]][['train']][[approx_method]])) {
-        cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]]
+      for(approx_method in names(estimate_matapprox[[est_method]][['train']])) {
+        # # could test by using: is.matrix or is.list
+        # is.matrix(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+        # is.matrix(estimate_matapprox[[est_method]][['matcomp_linearreg']])
+        # is.list(estimate_matapprox[[est_method]][['matdecomp_sparsesvd']])
+        # is.list(estimate_matapprox[[est_method]][['matcomp_linearreg']])
         
-        # shrink matrix
-        cur_shrink_res = 
-          shrink_matrix(unshrunk_mat = cur_estimates_mat,
-                        shrinkpoint_mat = cur_shrinkagepoint_mat,
-                        se_mat = cur_se_mat,
-                        ALPHA = ALPHA,
-                        return_ebci_obj=FALSE,
-                        weight_mat=NULL)
-        # add true theta values
-        cur_shrink_res = merge(cur_shrink_res, 
-                               reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
-                               by = c('grna', 'gene'))
-        # add idx for plotting later
-        cur_shrink_res = merge(merge(cur_shrink_res, 
-                                     data.frame(y_idx = 1:length(Theta_rownames), grna = Theta_rownames),
-                                     by = 'grna'), 
-                               data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
-                               by = 'gene')
-        # save result
-        shrinkage_results[[est_method]][[approx_method]] = cur_shrink_res
-  
-        
-      } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
-        for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
-          cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]][[r]]
+        # if there are not ranks (eg linearreg)
+        if(is.matrix(estimate_matapprox[[est_method]][['train']][[approx_method]])) {
+          if(splittype == 'samplesplit') {
+              cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]] # matrix to shrink towards
+          } else if(splittype == 'nosamplesplit') {
+              cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['all']][[approx_method]] # matrix to shrink towards
+          }
+
+          
+          
           # shrink matrix
           cur_shrink_res = 
             shrink_matrix(unshrunk_mat = cur_estimates_mat,
-                        shrinkpoint_mat = cur_shrinkagepoint_mat,
-                        se_mat = cur_se_mat,
-                        ALPHA = ALPHA,
-                        return_ebci_obj=FALSE,
-                        weight_mat=NULL)
+                          shrinkpoint_mat = cur_shrinkagepoint_mat,
+                          se_mat = cur_se_mat,
+                          ALPHA = ALPHA,
+                          return_ebci_obj=FALSE,
+                          weight_mat=NULL)
           # add true theta values
           cur_shrink_res = merge(cur_shrink_res, 
                                  reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
@@ -416,12 +407,42 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                                  data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
                                  by = 'gene')
           # save result
-          shrinkage_results[[est_method]][[approx_method]][[r]] = cur_shrink_res
+          shrinkage_results[[est_method]][[splittype]][[approx_method]] = cur_shrink_res
+    
+          
+        } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
+          for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
+            cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]][[r]]
+            # shrink matrix
+            cur_shrink_res = 
+              shrink_matrix(unshrunk_mat = cur_estimates_mat,
+                          shrinkpoint_mat = cur_shrinkagepoint_mat,
+                          se_mat = cur_se_mat,
+                          ALPHA = ALPHA,
+                          return_ebci_obj=FALSE,
+                          weight_mat=NULL)
+            # add true theta values
+            cur_shrink_res = merge(cur_shrink_res, 
+                                   reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
+                                   by = c('grna', 'gene'))
+            # add idx for plotting later
+            cur_shrink_res = merge(merge(cur_shrink_res, 
+                                         data.frame(y_idx = 1:length(Theta_rownames), grna = Theta_rownames),
+                                         by = 'grna'), 
+                                   data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
+                                   by = 'gene')
+            # save result
+            shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]] = cur_shrink_res
+            
+          }
           
         }
-        
       }
-    }
+    } 
+
+
+
+
   }
 
   return(shrinkage_results)
@@ -449,10 +470,10 @@ h5_1_plots_summary <- function(shrinkage_results, save_folder, ranks) {
       # is.data.frame(shrinkage_results[[est_method]][['matcomp_linearreg']])
       
       # if there are not ranks (eg linearreg)
-      if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+      if(is.data.frame(shrinkage_results[[est_method]][['samplesplit']][[approx_method]])) {
         cur_shrinkage_plots_folder = sprintf('%s%s/', save_folder, approx_method)
         dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
-        cur_shrink_res = shrinkage_results[[est_method]][[approx_method]]
+        cur_shrink_res = shrinkage_results[[est_method]][['samplesplit']][[approx_method]]
         
         plot_shrink_results(shrink_df      = cur_shrink_res, 
                             plot_folder    = cur_shrinkage_plots_folder, 
@@ -467,7 +488,7 @@ h5_1_plots_summary <- function(shrinkage_results, save_folder, ranks) {
         for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
           cur_shrinkage_plots_folder = sprintf('%s/%s_%02.f/', save_folder, approx_method, r)
           dir.create(sprintf('%spoints/', cur_shrinkage_plots_folder), showWarnings = FALSE, recursive = TRUE)
-          cur_shrink_res = shrinkage_results[[est_method]][[approx_method]][[r]]
+          cur_shrink_res = shrinkage_results[[est_method]][['samplesplit']][[approx_method]][[r]]
           
           plot_shrink_results(shrink_df      = cur_shrink_res, 
                               plot_folder    = cur_shrinkage_plots_folder, 
@@ -496,16 +517,21 @@ h5_2_plots_matrix <- function(shrinkage_results, est_effects_matrices, estimate_
                               save_folder, allcells_results, Theta, ranks) {
   for(est_method in c('pois', 'nb')) {
     for(r in ranks) {
-      # print(sprintf("Part 5.2 %s %s", est_method, r))
-      make_matrix_ebci_plots(est_method = est_method,   
-                             chosen_rank_to_plot = r, 
-                             shrinkage_results = shrinkage_results, 
-                             est_effects_matrices = est_effects_matrices, 
-                             estimate_matapprox = estimate_matapprox, 
-                             allcells_results = allcells_results, 
-                             save_folder = save_folder,                              
-                             Theta=Theta,
-                             color_limits = c(floor(min(Theta-.75)), ceiling(max(Theta+.75))))
+      # for(splittype in c('samplesplit', 'nosamplesplit')) {
+        # print(sprintf("Part 5.2 %s %s", est_method, r))
+        # dir.create(sprintf('%s/%s/', save_folder, splittype))
+        make_matrix_ebci_plots(est_method = est_method,   
+                               chosen_rank_to_plot = r, 
+                               shrinkage_results = shrinkage_results, 
+                               est_effects_matrices = est_effects_matrices, 
+                               estimate_matapprox = estimate_matapprox, 
+                               allcells_results = allcells_results, 
+                               # save_folder = sprintf('%s/%s/', save_folder, splittype),     
+                               save_folder=save_folder,                         
+                               Theta=Theta,
+                               color_limits = c(floor(min(Theta-.75)), ceiling(max(Theta+.75))))
+      # }
+      
     }
   }
 }
@@ -519,7 +545,8 @@ h5_2_plots_matrix <- function(shrinkage_results, est_effects_matrices, estimate_
 h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
   plot_df = NULL
     for(est_method in names(shrinkage_results)) {
-      plot_df_ = shrinkage_results[[est_method]][['matcomp_linearreg']] |> # pick any (would be same)
+      for(splittype in c('samplesplit', 'nosamplesplit')) {
+        plot_df_ = shrinkage_results[[est_method]][[splittype]][['matcomp_linearreg']] |> # pick any (would be same)
                         dplyr::mutate(method = 'unshrunk', rank = NA) |>
                         dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
                                       shrunk_value    = unshrunk_value, 
@@ -533,16 +560,16 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
                                        shrunk_value    = estimate,
                                        unshrunk_value  = estimate)  |> 
                          dplyr::select(all_of(colnames(plot_df_))) )
-      for(approx_method in names(shrinkage_results[[est_method]])) {
+      for(approx_method in names(shrinkage_results[[est_method]][[splittype]])) {
          # if there are not ranks (eg linearreg)
-          if(is.data.frame(shrinkage_results[[est_method]][[approx_method]])) {
+          if(is.data.frame(shrinkage_results[[est_method]][[splittype]][[approx_method]])) {
             plot_df_ = rbind(plot_df_, 
-                            shrinkage_results[[est_method]][[approx_method]] |> 
+                            shrinkage_results[[est_method]][[splittype]][[approx_method]] |> 
                             dplyr::mutate(method = approx_method, rank = NA))
           } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
             for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
                plot_df_ = rbind(plot_df_, 
-                            shrinkage_results[[est_method]][[approx_method]][[r]] |> 
+                            shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]] |> 
                             dplyr::mutate(method = approx_method, rank = r))
             }
             
@@ -550,6 +577,7 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
       }
       plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
       rm(plot_df_)
+      }
     }
     
     plot_df$method = factor(plot_df$method, 
@@ -661,6 +689,15 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
                                          labs(title = TeX(r'($\tilde{\Theta}$ (SVD))')) 
     p_matapproxmatdecomp_sparsesvd = my_display_matrix(estimate_matapprox[[est_method]][['train']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]]) + 
                                          labs(title = TeX(r'($\tilde{\Theta}$ (Sparse SVD))'))
+
+    p_matapprox_matcomp_linearreg_all  = my_display_matrix(estimate_matapprox[[est_method]][['all']][['matcomp_linearreg']]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Lin Reg))'))
+    p_matapprox_matcomp_softImpute_all = my_display_matrix(estimate_matapprox[[est_method]][['all']][['matcomp_softImpute']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Soft Impute))'))
+    p_matapprox_matdecomp_svd_all      = my_display_matrix(estimate_matapprox[[est_method]][['all']][['matdecomp_svd']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (SVD))')) 
+    p_matapproxmatdecomp_sparsesvd_all = my_display_matrix(estimate_matapprox[[est_method]][['all']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]]) + 
+                                         labs(title = TeX(r'($\tilde{\Theta}$ (Sparse SVD))'))
     
     # gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest, 
     #                         p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd,
@@ -669,16 +706,29 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
     
     # print('D ')
     #  - (heatmap) ebci estimates (shrunk points) ---------------------------------------------------------------------------------------------
-    p_ebci_estimates_linearreg  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matcomp_linearreg']], # turn back into matrix form
+    p_ebci_estimates_linearreg  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['samplesplit']][['matcomp_linearreg']], # turn back into matrix form
                                                                 y_idx ~ x_idx, value.var = 'shrunk_value')) + 
                                      labs(title = TeX(r'(EB $\hat{\Theta}$ (Lin Reg))'))
-    p_ebci_estimates_softImpute = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matcomp_softImpute']][[chosen_rank_to_plot]], 
+    p_ebci_estimates_softImpute = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['samplesplit']][['matcomp_softImpute']][[chosen_rank_to_plot]], 
                                                                 y_idx ~ x_idx, value.var = 'shrunk_value')) + 
                                      labs(title = TeX(r'(EB $\hat{\Theta}$ (Soft Impute))'))
-    p_ebci_estimates_svd        = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matdecomp_svd']][[chosen_rank_to_plot]], 
+    p_ebci_estimates_svd        = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['samplesplit']][['matdecomp_svd']][[chosen_rank_to_plot]], 
                                                                 y_idx ~ x_idx, value.var = 'shrunk_value')) + 
                                      labs(title = TeX(r'(EB $\hat{\Theta}$ (SVD))'))
-    p_ebci_estimates_sparsesvd  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], 
+    p_ebci_estimates_sparsesvd  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['samplesplit']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Sparse SVD))'))
+
+    p_ebci_estimates_linearreg_nosplit  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['nosamplesplit']][['matcomp_linearreg']], # turn back into matrix form
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Lin Reg))'))
+    p_ebci_estimates_softImpute_nosplit = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['nosamplesplit']][['matcomp_softImpute']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (Soft Impute))'))
+    p_ebci_estimates_svd_nosplit        = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['nosamplesplit']][['matdecomp_svd']][[chosen_rank_to_plot]], 
+                                                                y_idx ~ x_idx, value.var = 'shrunk_value')) + 
+                                     labs(title = TeX(r'(EB $\hat{\Theta}$ (SVD))'))
+    p_ebci_estimates_sparsesvd_nosplit  = my_display_matrix(reshape2::acast(shrinkage_results[[est_method]][['nosamplesplit']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], 
                                                                 y_idx ~ x_idx, value.var = 'shrunk_value')) + 
                                      labs(title = TeX(r'(EB $\hat{\Theta}$ (Sparse SVD))'))
     
@@ -707,17 +757,21 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
       scale_fill_continuous(breaks = c(0, 1), limits = c(0, 1), palette = c("white", "orangered2")) +
       labs(title = title)
     }
-    # print('F 1 ')
-    p_ebci_sig_linearreg  = make_ebci_sig_plot(shrinkage_results[[est_method]][['matcomp_linearreg']],                          TeX(r'($0 \in$ EBCI (Lin Reg))'))
-    # print('F 2 ')
-    p_ebci_sig_softImpute = make_ebci_sig_plot(shrinkage_results[[est_method]][['matcomp_softImpute']][[chosen_rank_to_plot]],  TeX(r'($0 \in$ EBCI (Soft Impute))'))
-    # print('F 3 ')
-    p_ebci_sig_svd        = make_ebci_sig_plot(shrinkage_results[[est_method]][['matdecomp_svd']][[chosen_rank_to_plot]],       TeX(r'($0 \in$ EBCI (SVD))'))
-    # print('F 4 ')
-    p_ebci_sig_sparsesvd  = make_ebci_sig_plot(shrinkage_results[[est_method]][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], TeX(r'($0 \in$ EBCI (Sparse SVD))'))
+
+    # For sample split procedure
+    p_ebci_sig_linearreg  = make_ebci_sig_plot(shrinkage_results[[est_method]][['samplesplit']][['matcomp_linearreg']],                          TeX(r'($0 \in$ EBCI (Lin Reg))'))
+    p_ebci_sig_softImpute = make_ebci_sig_plot(shrinkage_results[[est_method]][['samplesplit']][['matcomp_softImpute']][[chosen_rank_to_plot]],  TeX(r'($0 \in$ EBCI (Soft Impute))'))
+    p_ebci_sig_svd        = make_ebci_sig_plot(shrinkage_results[[est_method]][['samplesplit']][['matdecomp_svd']][[chosen_rank_to_plot]],       TeX(r'($0 \in$ EBCI (SVD))'))
+    p_ebci_sig_sparsesvd  = make_ebci_sig_plot(shrinkage_results[[est_method]][['samplesplit']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], TeX(r'($0 \in$ EBCI (Sparse SVD))'))
+    
+    # For no sample split procedure
+    p_ebci_sig_linearreg_nosplit  = make_ebci_sig_plot(shrinkage_results[[est_method]][['nosamplesplit']][['matcomp_linearreg']],                          TeX(r'($0 \in$ EBCI (Lin Reg))'))
+    p_ebci_sig_softImpute_nosplit = make_ebci_sig_plot(shrinkage_results[[est_method]][['nosamplesplit']][['matcomp_softImpute']][[chosen_rank_to_plot]],  TeX(r'($0 \in$ EBCI (Soft Impute))'))
+    p_ebci_sig_svd_nosplit        = make_ebci_sig_plot(shrinkage_results[[est_method]][['nosamplesplit']][['matdecomp_svd']][[chosen_rank_to_plot]],       TeX(r'($0 \in$ EBCI (SVD))'))
+    p_ebci_sig_sparsesvd_nosplit  = make_ebci_sig_plot(shrinkage_results[[est_method]][['nosamplesplit']][['matdecomp_sparsesvd']][[chosen_rank_to_plot]], TeX(r'($0 \in$ EBCI (Sparse SVD))'))
     
     
-    print(head(allcells_results[[est_method]]))
+    
     # print('F 5 ')
     p_sig_all             = make_ebci_sig_plot(allcells_results[[est_method]], TeX(r'($0 \in$ CI (all))'))
     
@@ -734,18 +788,34 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
     #                                                  NA,  12, 13, 14, 15), byrow = TRUE, ncol = 5))
     
     # put all together ---------------------------------------------------------------------------------------------------------------------------------------
-    grob <- gridExtra::arrangeGrob(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,  # 1 2 3
-                                  p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, # 4   5  6  7
-                                  p_ebci_estimates_linearreg, p_ebci_estimates_softImpute, p_ebci_estimates_svd, p_ebci_estimates_sparsesvd,                # 8   9 10 11
-                                  p_ebci_sig_linearreg, p_ebci_sig_softImpute, p_ebci_sig_svd, p_ebci_sig_sparsesvd,                                        # 12 13 14 15
-                                  p_ThetaEstAll, p_sig_all, # 16 17
-                                  layout_matrix = matrix(c(1,  2,  3,  NA, 16,
-                                                           4,  5,  6,   7, NA, 
-                                                           8,  9,  10, 11, NA, 
-                                                           12, 13, 14, 15, 17), byrow = TRUE, ncol = 5))
+    # grob <- gridExtra::arrangeGrob(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,  # 1 2 3
+    #                               p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, # 4   5  6  7
+    #                               p_ebci_estimates_linearreg, p_ebci_estimates_softImpute, p_ebci_estimates_svd, p_ebci_estimates_sparsesvd,                # 8   9 10 11
+    #                               p_ebci_sig_linearreg, p_ebci_sig_softImpute, p_ebci_sig_svd, p_ebci_sig_sparsesvd,                                        # 12 13 14 15
+    #                               p_ThetaEstAll, p_sig_all, # 16 17
+    #                               layout_matrix = matrix(c(1,  2,  3,  NA, 16,
+    #                                                        4,  5,  6,   7, NA, 
+    #                                                        8,  9,  10, 11, NA, 
+    #                                                        12, 13, 14, 15, 17), byrow = TRUE, ncol = 5))
+
+    grob <- gridExtra::arrangeGrob(p_ThetaTrue                 , p_ThetaEstTrain               , p_ThetaEstTest,                                            # 1 2 3 
+                                  p_matapprox_matcomp_linearreg, p_matapprox_matcomp_softImpute, p_matapprox_matdecomp_svd, p_matapproxmatdecomp_sparsesvd, #  4  5  6  7  
+                                  p_ebci_estimates_linearreg   , p_ebci_estimates_softImpute   , p_ebci_estimates_svd     , p_ebci_estimates_sparsesvd,     #  8  9 10 11
+                                  p_ebci_sig_linearreg         , p_ebci_sig_softImpute         , p_ebci_sig_svd           , p_ebci_sig_sparsesvd,           # 12 13 14 15
+                                  
+
+                                  p_ThetaEstAll, p_sig_all,                                                                                                                  # 16 17
+                                  p_matapprox_matcomp_linearreg_all, p_matapprox_matcomp_softImpute_all, p_matapprox_matdecomp_svd_all, p_matapproxmatdecomp_sparsesvd_all,  # 18 19 20 21
+                                  p_ebci_estimates_linearreg_nosplit, p_ebci_estimates_softImpute_nosplit, p_ebci_estimates_svd_nosplit, p_ebci_estimates_sparsesvd_nosplit, # 22 23 24 25
+                                  p_ebci_sig_linearreg_nosplit, p_ebci_sig_softImpute_nosplit, p_ebci_sig_svd_nosplit, p_ebci_sig_sparsesvd_nosplit,                         # 26 27 28 29
+                                  layout_matrix = matrix(c(1,  2,  3,  NA,   16, 17, NA, NA,
+                                                           4,  5,  6,   7,   18, 19, 20, 21,
+                                                           8,  9,  10, 11,   22, 23, 24, 25,
+                                                           12, 13, 14, 15,   26, 27, 28, 29          ), byrow = TRUE, ncol = 8))
     # print('H ')
     gridExtra::grid.arrange(grob)
-    ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.pdf', save_folder, est_method, chosen_rank_to_plot), grob, width = 18, height = 12)
+    ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.pdf', save_folder, est_method, chosen_rank_to_plot), grob, width = 28, # 18, 
+                                                                                                          height = 12)
 
 }
 
@@ -859,22 +929,23 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
                          estimate_matapprox  = estimate_matapprox,
                          shrinkage_results   = shrinkage_results,
                          allcells_results    = est_eff_res$allcells_results,
-                         Theta               = Theta)
+                         Theta               = Theta, # save some of the parameters used for this sim
+                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size, ranks=ranks, save_folder=save_folder) 
   
   
   if(!is.null(save_folder) && dir.exists(save_folder)) {
     # save simulated results
     saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder))
     plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks)
-
+    write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
 
     # additionally, if we want to make plots
     if(make_plots) {
       # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
-      print('Part 5.1: ')
-      h5_1_plots_summary(shrinkage_results=shrinkage_results, save_folder=save_folder, ranks=ranks)
+      # print('Part 5.1: ')
+      # h5_1_plots_summary(shrinkage_results=shrinkage_results, save_folder=save_folder, ranks=ranks)
       
-      # 5.2 matrix plots
+      # 5.2 plots of matrices (e.g. Theta, estimates, approx, shrunk, etc...)
       print('Part 5.2: ')
       h5_2_plots_matrix(shrinkage_results=shrinkage_results, 
                         est_effects_matrices=est_eff_res$est_effects_matrices, 
@@ -886,7 +957,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
       
       # 5.3 mse
       print('Part 5.3: ')
-      write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
+      
       h5_3_plots_mse(plot_df=plot_df, ranks=ranks, save_folder=save_folder)
     }
 
@@ -900,6 +971,57 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
 
 
 
+
+#' Make plots from previously saved results
+#' saved results should be a list
+#' @param sim_results (list) that is the 'all_sim_results' from the function sim_EBCI_celllevel
+#' all_sim_results = list(est_effects_matrices= est_eff_res$est_effects_matrices,
+#'                         est_se_matrices     = est_eff_res$est_se_matrices,
+#'                         estimate_matapprox  = estimate_matapprox,
+#'                         shrinkage_results   = shrinkage_results,
+#'                         allcells_results    = est_eff_res$allcells_results,
+#'                         Theta               = Theta)
+#' @param save_folder (character) 
+#' @param create_default_plots (boolean) whether or not to create default plots that could have
+#'        been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
+#'        the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
+#' @output 
+make_plots_from_save <- function(sim_results, save_folder, create_default_plots=FALSE) {
+
+  if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
+
+  
+
+  # create a dataframe for plotting
+  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$est_eff_res$allcells_results, ranks=sim_results$ranks)
+  write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
+
+
+  if(create_default_plots) {
+    # if we want to make defulat plots
+    # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
+    # print('Part 5.1: ')
+    # h5_1_plots_summary(shrinkage_results=sim_results$shrinkage_results, save_folder=save_folder, ranks=sim_results$ranks)
+    
+    # 5.2 matrix plots
+    print('Part 5.2: ')
+    h5_2_plots_matrix(shrinkage_results=sim_results$shrinkage_results, 
+                      est_effects_matrices=sim_results$est_eff_res$est_effects_matrices, 
+                      estimate_matapprox=sim_results$estimate_matapprox, 
+                      save_folder=save_folder, 
+                      allcells_results=sim_results$est_eff_res$allcells_results, 
+                      Theta=sim_results$Theta,
+                      ranks=sim_results$ranks)
+    
+    # 5.3 mse
+    print('Part 5.3: ')
+    h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
+  }
+
+  
+
+
+}
 
 ########################################################
 ##  OLD FUNCTIONS

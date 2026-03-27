@@ -930,7 +930,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
                          shrinkage_results   = shrinkage_results,
                          allcells_results    = est_eff_res$allcells_results,
                          Theta               = Theta, # save some of the parameters used for this sim
-                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size, ranks=ranks, save_folder=save_folder) 
+                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, save_folder=save_folder) 
   
   
   if(!is.null(save_folder) && dir.exists(save_folder)) {

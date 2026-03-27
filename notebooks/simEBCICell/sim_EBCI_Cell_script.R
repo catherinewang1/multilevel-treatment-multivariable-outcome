@@ -24,6 +24,8 @@ source('../../utils/simEBCICell_utils.R')
 
 
 
+make_plots_forall = FALSE
+
 # simulations
 
 
@@ -53,7 +55,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
@@ -84,7 +86,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) # 1.4  mins without plots, 3.x with plots
 
@@ -111,7 +113,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -140,7 +142,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) # 
 
@@ -168,7 +170,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) #
 
@@ -197,7 +199,7 @@ sim_A_results = sim_EBCI_celllevel(
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 3, 5),       # ranks for matrix approximations
   save_folder=save_folder,# folder to save results and plots
-  make_plots = TRUE
+  make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) # 
 

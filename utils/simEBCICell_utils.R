@@ -290,6 +290,13 @@ h3_1_approximate_matrix <- function(mat, method, ranks, Theta_rownames, Theta_co
       mat_approx_res[[r]] = cur_matapprox
       rm(cur_matapprox)
     }
+  # === Basic Shrinkage Points
+  } else if(method == 'zeros') { 
+    # --- zero 0
+    mat_approx_res = matrix(0,         nrow = n, ncol = m, dimnames = list(Theta_rownames, Theta_colnames))
+  } else if (method == 'average') {
+    # --- overall average 
+    mat_approx_res = matrix(mean(mat), nrow = n, ncol = m, dimnames = list(Theta_rownames, Theta_colnames))
   } else { # bad method name input
     print('bad approx matrix method name input in function h3_1_approximate_matrix')
   }
@@ -327,7 +334,7 @@ h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames=
       cur_mat = est_effects_matrices[[distn_name]][[split]] # matrix to make approximations of
       # n = nrow(cur_mat); m = ncol(cur_mat)
       
-      matapprox_methods = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd')
+      matapprox_methods = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'zeros', 'average')
       for(matapprox_method in matapprox_methods) {
         estimate_matapprox[[distn_name]][[split]][[matapprox_method]] = h3_1_approximate_matrix(mat = cur_mat,  method = matapprox_method, ranks = ranks,
                                                                                                 Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
@@ -355,7 +362,7 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
   
   # use shrink_matrix from utils/matrix_shrinkage.r
   shrinkage_results = list()
-  for(est_method in names(est_effects_matrices)) {
+  for(est_method in names(est_effects_matrices)) { # pois or nb
     shrinkage_results[[est_method]] = list()
     
     # do 2 categories of shrinkage: sample split (train towards test), no sample split (all towards all)
@@ -542,7 +549,8 @@ h5_2_plots_matrix <- function(shrinkage_results, est_effects_matrices, estimate_
 #' @param shrinkage_results
 #' @param allcells_results
 #' @param ranks
-h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
+#' @param ALPHA
+h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPHA) {
   plot_df = NULL
     for(est_method in names(shrinkage_results)) {
       for(splittype in c('samplesplit', 'nosamplesplit')) {
@@ -552,7 +560,7 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
                                       shrunk_value    = unshrunk_value, 
                                       lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
                                       upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se) 
-      plot_df_ = rbind(plot_df_, 
+        plot_df_ = rbind(plot_df_, 
                        allcells_results[[est_method]] |> # all cells
                          dplyr::mutate(method = 'unshrunkallcells', rank = NA) |>
                          dplyr::mutate(shrinkage_point = NA,   # set all values to the original estimates
@@ -575,13 +583,13 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks) {
             
           }
       }
-      plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, .before = 1))
+      plot_df = rbind(plot_df, plot_df_ |> dplyr::mutate(sim_distn = est_method, split_type = splittype, .before = 1))
       rm(plot_df_)
       }
     }
     
     plot_df$method = factor(plot_df$method, 
-                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd"))
+                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd", "zeros", "average"))
     
 
     return(plot_df)
@@ -596,7 +604,7 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
     # mse
     p_mse = ggplot(plot_df |> 
              group_by(sim_distn, method, rank) |> 
-             summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+             summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
              arrange(sim_distn, method, rank) |> 
              mutate(methodrank = factor(paste0(method, rank), 
                                     levels = c("unshrunkallcellsNA",
@@ -611,7 +619,7 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
       theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
     
     ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
-    return()
+    return(p_mse)
 }
 
 
@@ -930,13 +938,14 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
                          shrinkage_results   = shrinkage_results,
                          allcells_results    = est_eff_res$allcells_results,
                          Theta               = Theta, # save some of the parameters used for this sim
-                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, save_folder=save_folder) 
+                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, 
+                         ALPHA=ALPHA, save_folder=save_folder) 
   
   
   if(!is.null(save_folder) && dir.exists(save_folder)) {
     # save simulated results
     saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder))
-    plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks)
+    plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks, ALPHA=ALPHA)
     write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
 
     # additionally, if we want to make plots
@@ -993,7 +1002,7 @@ make_plots_from_save <- function(sim_results, save_folder, create_default_plots=
   
 
   # create a dataframe for plotting
-  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$est_eff_res$allcells_results, ranks=sim_results$ranks)
+  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$est_eff_res$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
   write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
 
 

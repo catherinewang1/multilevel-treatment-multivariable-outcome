@@ -554,7 +554,7 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
   plot_df = NULL
     for(est_method in names(shrinkage_results)) {
       for(splittype in c('samplesplit', 'nosamplesplit')) {
-        plot_df_ = shrinkage_results[[est_method]][[splittype]][['matcomp_linearreg']] |> # pick any (would be same)
+        plot_df_ = shrinkage_results[[est_method]][[splittype]][['matcomp_linearreg']] |> # no shrinkage/glm, pick any (would be same)
                         dplyr::mutate(method = 'unshrunk', rank = NA) |>
                         dplyr::mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
                                       shrunk_value    = unshrunk_value, 
@@ -566,7 +566,8 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
                          dplyr::mutate(shrinkage_point = NA,   # set all values to the original estimates
                                        weight = NA, 
                                        shrunk_value    = estimate,
-                                       unshrunk_value  = estimate)  |> 
+                                       unshrunk_value  = estimate,
+                                       w_eb            = NA)  |> 
                          dplyr::select(all_of(colnames(plot_df_))) )
       for(approx_method in names(shrinkage_results[[est_method]][[splittype]])) {
          # if there are not ranks (eg linearreg)
@@ -602,20 +603,39 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
 #' @output saves plot at sprintf('%s/shrinkage_mse.pdf', save_folder)
 h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
     # mse
+    # p_mse = ggplot(plot_df |> 
+    #          group_by(sim_distn, method, rank) |> 
+    #          summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+    #          arrange(sim_distn, method, rank) |> 
+    #          mutate(methodrank = factor(paste0(method, rank), 
+    #                                 levels = c("unshrunkallcellsNA",
+    #                                            "unshrunkNA", 
+    #                                            "matcomp_linearregNA", 
+    #                                            paste0("matcomp_softImpute", ranks), 
+    #                                            paste0("matdecomp_svd", ranks),
+    #                                            paste0("matdecomp_sparsesvd", ranks)))), 
+    #        aes(x = methodrank, y = mse)) +
+    #   geom_col(color = 'black', fill = 'gray') +
+    #   facet_grid(rows = vars(sim_distn), scales = 'free_y') +
+    #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+
     p_mse = ggplot(plot_df |> 
-             group_by(sim_distn, method, rank) |> 
-             summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
-             arrange(sim_distn, method, rank) |> 
-             mutate(methodrank = factor(paste0(method, rank), 
-                                    levels = c("unshrunkallcellsNA",
-                                               "unshrunkNA", 
-                                               "matcomp_linearregNA", 
-                                               paste0("matcomp_softImpute", ranks), 
-                                               paste0("matdecomp_svd", ranks),
-                                               paste0("matdecomp_sparsesvd", ranks)))), 
-           aes(x = methodrank, y = mse)) +
+       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         "zerosNA", 
+                                         "averageNA"))), 
+      aes(x = methodrank, y = mse)) +
       geom_col(color = 'black', fill = 'gray') +
-      facet_grid(rows = vars(sim_distn), scales = 'free_y') +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
       theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
     
     ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
@@ -682,8 +702,8 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
     p_ThetaEstTest  = my_display_matrix(est_effects_matrices[[est_method]][['test' ]]) + labs(title = TeX(r'($\hat{\Theta}$ (Test))')) 
     p_ThetaEstAll   = my_display_matrix(est_effects_matrices[[est_method]][['all'  ]]) + labs(title = TeX(r'($\hat{\Theta}$ (All))')) 
     
-    gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,p_ThetaEstAll,
-                            layout_matrix = matrix(c(NA,  1,  2,  3, 4), byrow = TRUE, ncol = 5))
+    # gridExtra::grid.arrange(p_ThetaTrue, p_ThetaEstTrain, p_ThetaEstTest,p_ThetaEstAll,
+    #                         layout_matrix = matrix(c(NA,  1,  2,  3, 4), byrow = TRUE, ncol = 5))
     
     # print('C ')
     #  - (heatmap) matrix approx of train split (shrinkage points) --------------------------------------------------------------------------
@@ -821,7 +841,7 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
                                                            8,  9,  10, 11,   22, 23, 24, 25,
                                                            12, 13, 14, 15,   26, 27, 28, 29          ), byrow = TRUE, ncol = 8))
     # print('H ')
-    gridExtra::grid.arrange(grob)
+    # gridExtra::grid.arrange(grob)
     ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.pdf', save_folder, est_method, chosen_rank_to_plot), grob, width = 28, # 18, 
                                                                                                           height = 12)
 
@@ -991,43 +1011,51 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
 #'                         allcells_results    = est_eff_res$allcells_results,
 #'                         Theta               = Theta)
 #' @param save_folder (character) 
-#' @param create_default_plots (boolean) whether or not to create default plots that could have
-#'        been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
-#'        the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
+#' @param which_plots (list) of named booleans, naming which plots to make
+#' @param write_plot_df (boolean) whether or not to save the plot_df
+#' #@param create_default_plots (boolean) whether or not to create default plots that could have
+#' #       been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
+#' #       the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
 #' @output 
-make_plots_from_save <- function(sim_results, save_folder, create_default_plots=FALSE) {
+make_plots_from_save <- function(sim_results, save_folder, which_plots, write_plot_df=FALSE) {
 
   if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
-
+  
   
 
   # create a dataframe for plotting
-  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$est_eff_res$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
-  write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
-
-
-  if(create_default_plots) {
+  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
+  if(write_plot_df) {
+    write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE) # save plotting df
+  }
+  
+  
+  # 5.2 matrix plots
+  if(('matrix' %in% names(which_plots)) & which_plots$matrix) {
     # if we want to make defulat plots
     # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
     # print('Part 5.1: ')
     # h5_1_plots_summary(shrinkage_results=sim_results$shrinkage_results, save_folder=save_folder, ranks=sim_results$ranks)
     
-    # 5.2 matrix plots
-    print('Part 5.2: ')
+    
+    print('matrix')
     h5_2_plots_matrix(shrinkage_results=sim_results$shrinkage_results, 
-                      est_effects_matrices=sim_results$est_eff_res$est_effects_matrices, 
+                      est_effects_matrices=sim_results$est_effects_matrices, 
                       estimate_matapprox=sim_results$estimate_matapprox, 
                       save_folder=save_folder, 
-                      allcells_results=sim_results$est_eff_res$allcells_results, 
+                      allcells_results=sim_results$allcells_results, 
                       Theta=sim_results$Theta,
                       ranks=sim_results$ranks)
     
-    # 5.3 mse
-    print('Part 5.3: ')
-    h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
+    
+    
   }
 
-  
+  # 5.3 mse
+  if(('mse' %in% names(which_plots)) & which_plots$mse) {
+    print('mse')
+    p_mse = h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
+  }
 
 
 }

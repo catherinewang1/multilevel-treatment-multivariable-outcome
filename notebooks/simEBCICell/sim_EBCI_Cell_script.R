@@ -107,8 +107,8 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=Theta,            # true effects ( input NULL if want to simulate)
-  N=1000,                 # number of treated cells
-  N_control=500,          # number of control cells
+  N= 500,                 # number of treated cells
+  N_control=250,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
@@ -120,7 +120,7 @@ t1 = Sys.time(); print(t1 - t0) #
 
 
 
-# === SETTING D === (even larger? )
+# === SETTING D === (larger matrix)
 set.seed(12345)
 setting_name = 'D'
 P=50
@@ -148,7 +148,7 @@ t1 = Sys.time(); print(t1 - t0) #
 
 
 
-# === SETTING E === (smaller sample size (larger noise))
+# === SETTING E === (larger matrix, larger noise by smaller sample size)
 set.seed(12345)
 setting_name = 'E'
 P=50
@@ -175,11 +175,35 @@ sim_A_results = sim_EBCI_celllevel(
 t1 = Sys.time(); print(t1 - t0) #
 
 
-
-
-# === SETTING F === (rank increase)
+# === SETTING F === (larger matrix, largerer noise by smallerer sample size)
 set.seed(12345)
 setting_name = 'F'
+P=50
+G=500
+rank=3
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=1000,                 # number of treated cells
+  N_control=100,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = make_plots_forall
+)
+t1 = Sys.time(); print(t1 - t0) #
+
+# === SETTING G === (rank increase)
+set.seed(12345)
+setting_name = 'G'
 P=50
 G=500
 rank=5

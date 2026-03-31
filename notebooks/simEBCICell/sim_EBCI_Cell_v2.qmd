@@ -24,6 +24,7 @@ suppressPackageStartupMessages(library(ggplot2))
 ggplot2::theme_set(theme_bw())
 suppressPackageStartupMessages(library(RColorBrewer))
 suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
+suppressPackageStartupMessages(library(lpSolve))
 suppressPackageStartupMessages(library(assertthat)) 
 suppressPackageStartupMessages(library(softImpute))
 suppressPackageStartupMessages(library(latex2exp))
@@ -41,10 +42,38 @@ source('../../utils/simEBCICell_utils.R')
 
 
 
-# Simulate
+# Script
 
 
-```{r output=FALSE}
+```{r output=FALSE, eval=FALSE}
+#| eval: FALSE
+#| output: FALSE
+
+
+
+
+
+# libraries
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(ggplot2))
+ggplot2::theme_set(theme_bw())
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
+suppressPackageStartupMessages(library(assertthat)) 
+suppressPackageStartupMessages(library(softImpute))
+suppressPackageStartupMessages(library(latex2exp))
+
+# our code
+source('../../utils/matrix_shrinkage.r')
+source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
+
+source('../../utils/simEBCICell_utils.R') 
+
+
+
+# simulations
+
 
 ALPHA = .1 # PARAMETER
 overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
@@ -61,28 +90,26 @@ pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score 
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
 sim_A_results = sim_EBCI_celllevel(
-                   ALPHA=ALPHA,            # alpha testing level (for CIs)
-                   P=P,                    # number of grnas/perturbations
-                   G=G,                    # number of genes
-                   rank=rank,              # true rank of theta matrix
-                   Theta=ThetaA,            # true effects ( input NULL if want to simulate)
-                   N=500,                 # number of treated cells
-                   N_control=500,          # number of control cells
-                   pi_P=pi_P,              # propensity score for each treatment
-                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3),       # ranks for matrix approximations
-                   save_folder=save_folder, # folder to save results and plots
-                   make_plots = FALSE
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=ThetaA,            # true effects ( input NULL if want to simulate)
+  N=500,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
 )
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
-t1 = Sys.time(); print(t1 - t0) # 8 sec w/o plots, 1.7 mins with plots??
+t1 = Sys.time(); print(t1 - t0) # 8  24 sec w/o plots, 1.7 mins with plots??
 
 
-      
-      
-      
-      
+
+
 # === SETTING B === (slightly larger, ) 
 set.seed(12345)
 setting_name = 'B'
@@ -94,20 +121,20 @@ pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score 
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
 sim_A_results = sim_EBCI_celllevel(
-                   ALPHA=ALPHA,            # alpha testing level (for CIs)
-                   P=P,                    # number of grnas/perturbations
-                   G=G,                    # number of genes
-                   rank=rank,              # true rank of theta matrix
-                   Theta=Theta,            # true effects ( input NULL if want to simulate)
-                   N=1000,                 # number of treated cells
-                   N_control=500,          # number of control cells
-                   pi_P=pi_P,              # propensity score for each treatment
-                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3),       # ranks for matrix approximations
-                   save_folder=save_folder,# folder to save results and plots
-                   make_plots = TRUE
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=1000,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
 )
-t1 = Sys.time(); print(t1 - t0) # 1.4  mins without plots, 3.14605 mins with plots
+t1 = Sys.time(); print(t1 - t0) # 1.4  mins without plots, 3.x with plots
 
 
 # === SETTING C === (even larger, )
@@ -121,19 +148,20 @@ pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score 
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
 sim_A_results = sim_EBCI_celllevel(
-                   ALPHA=ALPHA,            # alpha testing level (for CIs)
-                   P=P,                    # number of grnas/perturbations
-                   G=G,                    # number of genes
-                   rank=rank,              # true rank of theta matrix
-                   Theta=Theta,            # true effects ( input NULL if want to simulate)
-                   N=2500,                 # number of treated cells
-                   N_control=500,          # number of control cells
-                   pi_P=pi_P,              # propensity score for each treatment
-                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3),       # ranks for matrix approximations
-                   save_folder=save_folder # folder to save results and plots
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=2500,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
 )
-t1 = Sys.time(); print(t1 - t0) # 12  mins
+t1 = Sys.time(); print(t1 - t0) # 
 
 
 
@@ -149,19 +177,77 @@ pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score 
 save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
 t0 = Sys.time()
 sim_A_results = sim_EBCI_celllevel(
-                   ALPHA=ALPHA,            # alpha testing level (for CIs)
-                   P=P,                    # number of grnas/perturbations
-                   G=G,                    # number of genes
-                   rank=rank,              # true rank of theta matrix
-                   Theta=Theta,            # true effects ( input NULL if want to simulate)
-                   N=5000,                 # number of treated cells
-                   N_control=500,          # number of control cells
-                   pi_P=pi_P,              # propensity score for each treatment
-                   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-                   ranks=c(1, 2, 3),       # ranks for matrix approximations
-                   save_folder=save_folder # folder to save results and plots
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=5000,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
 )
-t1 = Sys.time(); print(t1 - t0) # 12  mins
+t1 = Sys.time(); print(t1 - t0) # 
+
+
+
+# === SETTING E === (smaller sample size (larger noise))
+set.seed(12345)
+setting_name = 'E'
+P=50
+G=500
+rank=3
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=2000,                 # number of treated cells
+  N_control=200,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
+)
+t1 = Sys.time(); print(t1 - t0) #
+
+
+
+
+# === SETTING F === (rank increase)
+set.seed(12345)
+setting_name = 'F'
+P=50
+G=500
+rank=5
+Theta = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=Theta,            # true effects ( input NULL if want to simulate)
+  N=5000,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 3, 5),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE
+)
+t1 = Sys.time(); print(t1 - t0) # 
 
 
 
@@ -173,6 +259,226 @@ t1 = Sys.time(); print(t1 - t0) # 12  mins
 
 
 # Create Plots
+
+```{r}
+
+
+# load in save and create sim specific plots
+save_folder = '../../plots/simEBCICell/A'
+# save_folder = '../../plots/simEBCICell/D'
+sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+# sim_results$ALPHA = .1
+ranks = sim_results$ranks
+names(sim_results)
+names(sim_results$shrinkage_results$pois$samplesplit$zeros)
+Matrix::rankMatrix(sim_results$Theta) |> as.numeric() # find the rank of Theta (package Matrix, fn rankMatrix)
+plot_df = h5_0_create_plot_df(shrinkage_results = sim_results$shrinkage_results, 
+                              allcells_results  = sim_results$allcells_results, 
+                              ranks             = sim_results$ranks, 
+                              ALPHA             = sim_results$ALPHA)
+
+
+head(plot_df); dim(plot_df)
+# h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
+unique(plot_df$method)
+
+
+
+
+which_plots = list(matrices  = TRUE,
+                   mse       = TRUE,
+                   CIlengths = TRUE,
+                   rejrate   = TRUE)
+
+
+
+clean_methodrank_names <- function(x) {
+  
+  
+  
+}
+
+method_nicenames = list(unshrunk='GLM (sample split)',
+                        unshrunkallcells='GLM (all data)',
+                        matcomp_linearreg='EBCI (lin reg)',
+                        matcomp_softImpute='EBCI (softImpute)')
+
+
+method_nicenames[['unshrunk']]
+
+gsub(pattern = "NA", replacement = "", x = "unshrunkallcellsNA")
+
+matrices
+
+# display the matrices
+
+make_matrix_ebci_plots(..)
+
+
+
+# MSE
+ggplot(plot_df |> 
+       filter(method != 'matcomp_linearreg') |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         "zerosNA", 
+                                         "averageNA"))), 
+     aes(x = methodrank, y = mse)) +
+  geom_col(color = 'black', fill = 'gray') +
+  facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+
+
+# QQ-plots/rejection rates?
+
+plot_df |> 
+       filter(method != 'matcomp_linearreg') |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       arrange(...)
+       summarize(mse = mean((shrunk_value - true_theta)^2)) 
+
+       
+       
+         ebci_obj = ebci::ebci(formula = sprintf('%s - shrinkage_point ~ 0', 'unshrunk_value'),
+                        # formula = 'tstat - shrinkage_point ~ 0', # ebci_formula
+                        # data    = ebci_data, # |> dplyr::mutate(my_weights = 1/n()), 
+                        data = sim_results$shrinkage_results$nb$samplesplit$zeros,
+                        # se = eval(parse(text = se_colname)), 
+                        # weights =  eval(parse(text = sprintf('1/%s^2', se_colname))), 
+                        # TODO: set weights, prob 1/n
+                        se = se,
+                        weights = weight,
+                        # weights = 1/nrow(ebci_data),
+                        alpha = sim_results$ALPHA)
+         
+        
+         # maybe just write a custom function...
+         # 
+         my_mu2 = ebci_obj$mu2[['estimate']]
+         my_kappa = ebci_obj$kappa[['estimate']]
+         # search for alpha
+         cur_alpha = .3
+         ebci::cva(m2 = my_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)
+         
+         ebci_obj$df |> head()
+         
+         
+         # the CI is formed by
+         # \hat{\theta} +- cva_\alpha(m2i=sigma_i^2 / mu2, kappa) * w_eb * sigma_i
+         # to find the pseudo p-value...
+         # \hat{\theta} +- cva_\alpha(m2i, kappa) * w_eb * sigma_i
+         # Find the smallest alpha level such that this CI does not cover 0
+         # or
+         # find the largest alpha such that this CI covers 0
+         #
+         # e.g. large
+         al_ = seq(from = .01, to = .99, length.out = 20)
+         plot(al_, sapply(X = al_, FUN = function(al) {ebci::cva(m2 = my_mu2, kappa = my_kappa, check=FALSE, alpha = al)$cv}))
+         for(i in 1:10)  {ebci::cva(m2 = my_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)$cv |> print()}
+         
+         # params for running
+         MAX_ITER_FOR_P = 20    # limit the number of iterations
+         # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
+         alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
+         # estimate from overall ebci fit
+         my_mu2 = ebci_obj$mu2[['estimate']]
+         my_kappa = ebci_obj$kappa[['estimate']]
+         # params for each sample i 
+         my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
+         my_sigma = 1 # initial estimate standard error
+         my_web = .3   # shrinkage factor
+         
+         # helpful calcs to just perform once
+         sigma2_mu2 = my_sigma^2 / my_mu2  # = m2 in cva functgion input
+         theta_websigma = abs(my_theta) / (my_web * my_sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
+         
+         
+         
+         iter = 1
+         cur_min = 0; cur_max = 1 # range to search for pseudo p-value
+         cur_alpha = .5 # start in the middle
+         track_alphas = c(cur_alpha)
+         # distance = 10000
+         alpha_change = 1
+         # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
+         while(alpha_change > alpha_threshold & iter <= MAX_ITER_FOR_P) { # by alpha/p-value change
+           cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)$cv
+           print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
+                          iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
+           
+           # check if 0 is in CI with cur_alpha
+           if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
+             cur_min = cur_alpha  
+             new_alpha = (cur_alpha + cur_max) / 2
+           } else { # 0 \not\in CI: decrease alpha to make CI larger
+             cur_max = cur_alpha
+             new_alpha = (cur_alpha + cur_min) / 2
+           }
+           
+           
+           alpha_change = abs(new_alpha - cur_alpha)
+           cur_alpha = new_alpha
+           
+           track_alphas = c(track_alphas, cur_alpha)
+           
+           # distance = theta_websigma - cur_cva_alpha
+           iter = iter + 1
+         }
+         
+         
+         
+         
+         
+  # t1 = Sys.time(); print(t1 - t0)
+  
+  ebci_res = ebci_data |> 
+    # head(nrow(ebci_obj$df)) |>
+    dplyr::mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
+                  lower_ci = shrunk_value - ebci_obj$df$len_eb,
+                  upper_ci = shrunk_value + ebci_obj$df$len_eb)
+  
+  
+  
+
+# CI interval
+
+# Error by shrinkage distance?
+
+# Error by shrinkage
+
+```
+
+
+
+```{r}
+#| eval: true
+#| output: false
+#| warning: false
+#| include: false
+
+# make the matrix and mse plots for all the settings
+for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F')) {
+  # load in save and create sim specific plots
+  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+  sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+  
+  
+  make_plots_from_save(sim_results=sim_results,
+                       save_folder=save_folder,
+                       which_plots = list(matrix=TRUE, mse=TRUE),
+                       write_plot_df = FALSE)
+}
+
+
+```
 
 
 

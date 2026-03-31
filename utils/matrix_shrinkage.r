@@ -463,7 +463,8 @@ shrink_matrix <- function(unshrunk_mat,
     # head(nrow(ebci_obj$df)) |>
     dplyr::mutate(shrunk_value = ebci_obj$df$th_eb + shrinkage_point,
                   lower_ci = shrunk_value - ebci_obj$df$len_eb,
-                  upper_ci = shrunk_value + ebci_obj$df$len_eb)
+                  upper_ci = shrunk_value + ebci_obj$df$len_eb,
+                  w_eb     = ebci_obj$df$w_eb)
   if(return_ebci_obj) {
     return(list(ebci_res = ebci_res,
                 ebci_obj = ebci_obj))

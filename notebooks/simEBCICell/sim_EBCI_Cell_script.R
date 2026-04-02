@@ -201,7 +201,7 @@ sim_A_results = sim_EBCI_celllevel(
 )
 t1 = Sys.time(); print(t1 - t0) #
 
-# === SETTING G === (rank increase)
+# === SETTING G === (larger noise?, rank increase)
 set.seed(12345)
 setting_name = 'G'
 P=50
@@ -217,7 +217,7 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=Theta,            # true effects ( input NULL if want to simulate)
-  N=5000,                 # number of treated cells
+  N=1000,                 # number of treated cells
   N_control=500,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
@@ -226,5 +226,6 @@ sim_A_results = sim_EBCI_celllevel(
   make_plots = make_plots_forall
 )
 t1 = Sys.time(); print(t1 - t0) # 
+
 
 

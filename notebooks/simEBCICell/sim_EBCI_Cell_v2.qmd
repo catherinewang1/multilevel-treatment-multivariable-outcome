@@ -21,13 +21,15 @@ v2: put functions into a utils file
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(ggplot2))
-ggplot2::theme_set(theme_bw())
+ggplot2::theme_set(theme_bw() + theme(plot.title = element_text(hjust = .5), panel.grid.minor = element_blank()))
 suppressPackageStartupMessages(library(RColorBrewer))
 suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
 suppressPackageStartupMessages(library(lpSolve))
 suppressPackageStartupMessages(library(assertthat)) 
 suppressPackageStartupMessages(library(softImpute))
 suppressPackageStartupMessages(library(latex2exp))
+suppressPackageStartupMessages(library(future.apply))
+plan(multisession, workers = 4)  # or some other plan
 
 # our code
 source('../../utils/matrix_shrinkage.r')
@@ -63,7 +65,8 @@ suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
 suppressPackageStartupMessages(library(assertthat)) 
 suppressPackageStartupMessages(library(softImpute))
 suppressPackageStartupMessages(library(latex2exp))
-
+suppressPackageStartupMessages(library(future.apply))
+plan(multisession, workers = 4)  # or some other plan
 # our code
 source('../../utils/matrix_shrinkage.r')
 source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
@@ -257,6 +260,27 @@ t1 = Sys.time(); print(t1 - t0) #
 
 
 
+```{r}
+#| eval: true
+#| output: false
+#| warning: false
+#| include: false
+
+# make the matrix and mse plots for all the settings
+for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
+  # load in save and create sim specific plots
+  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+  sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+  
+  
+  make_plots_from_save(sim_results=sim_results,
+                       save_folder=save_folder,
+                       which_plots = list(matrix=TRUE, mse=TRUE, miscoverage=TRUE),
+                       write_plot_df = FALSE)
+}
+
+
+```
 
 # Create Plots
 
@@ -316,25 +340,6 @@ make_matrix_ebci_plots(..)
 
 
 
-# MSE
-ggplot(plot_df |> 
-       filter(method != 'matcomp_linearreg') |>
-       group_by(sim_distn, split_type, method, rank) |> 
-       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
-       arrange(sim_distn, split_type, method, rank) |> 
-       mutate(methodrank = factor(paste0(method, rank), 
-                              levels = c("unshrunkallcellsNA",
-                                         "unshrunkNA", 
-                                         "matcomp_linearregNA", 
-                                         paste0("matcomp_softImpute", ranks), 
-                                         paste0("matdecomp_svd", ranks),
-                                         paste0("matdecomp_sparsesvd", ranks), 
-                                         "zerosNA", 
-                                         "averageNA"))), 
-     aes(x = methodrank, y = mse)) +
-  geom_col(color = 'black', fill = 'gray') +
-  facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
 
 
 # QQ-plots/rejection rates?
@@ -384,54 +389,78 @@ plot_df |>
          plot(al_, sapply(X = al_, FUN = function(al) {ebci::cva(m2 = my_mu2, kappa = my_kappa, check=FALSE, alpha = al)$cv}))
          for(i in 1:10)  {ebci::cva(m2 = my_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)$cv |> print()}
          
-         # params for running
-         MAX_ITER_FOR_P = 20    # limit the number of iterations
-         # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
-         alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
-         # estimate from overall ebci fit
-         my_mu2 = ebci_obj$mu2[['estimate']]
-         my_kappa = ebci_obj$kappa[['estimate']]
-         # params for each sample i 
-         my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
-         my_sigma = 1 # initial estimate standard error
-         my_web = .3   # shrinkage factor
          
-         # helpful calcs to just perform once
-         sigma2_mu2 = my_sigma^2 / my_mu2  # = m2 in cva functgion input
-         theta_websigma = abs(my_theta) / (my_web * my_sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
-         
-         
-         
-         iter = 1
-         cur_min = 0; cur_max = 1 # range to search for pseudo p-value
-         cur_alpha = .5 # start in the middle
-         track_alphas = c(cur_alpha)
-         # distance = 10000
-         alpha_change = 1
-         # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
-         while(alpha_change > alpha_threshold & iter <= MAX_ITER_FOR_P) { # by alpha/p-value change
-           cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)$cv
-           print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
-                          iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
+         #' description: Create the pseudo p-value: Find the smallest alpha that does not cover 0 OR the largest alpha that still covers 0
+         #'  The CI is shrunk estimate +- cva * w_eb * sigma
+         #'  because of the way we call the function, we have our original estimate thetahat and shrinkagepoint
+         #'  and we shrink (thetahat - shrinkagepoint) towards 0 always to then get thetaeb(this is because we have diff shrinkage points for all the points)
+         #'  and then we add back the shrinkage point shrunkpoint = thetaeb + shrinkagepoint <-- this is the value to to input into this function, because the CI is centered around this point
+         #' @param thetashrunk (numeric)
+         #' @param sigma (numeric)
+         #' @param web (numeric) shrinkage factor from ebci object result
+         #' @param mu2 (numeric) estimated mu2 from ebci object result
+         #' @param kappa (numeric) estimated kappa from ebci object result
+         #' @param threshold (numeric) stop condition: perform until alpha's changes are < threshold
+         #'                            this is the max mis calc error for the pseudo-pval (if MAX_ITER is not reached)
+         #' @param maxiter (numeric) stop condition: maximum number of iterations to perform
+         #' 
+         #' @returns pseudopval (numeric) \in [0,1]
+         #' 
+         #' 
+         calc_pseudo_pval <- function(thetashrunk, sigma, web, mu2, kappa,
+                                      threshold, maxiter) {
+           # params for running 
+           MAX_ITER_FOR_P = 20    # limit the number of iterations
+           # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
+           alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
+           # estimate from overall ebci fit
+           my_mu2 = ebci_obj$mu2[['estimate']]
+           my_kappa = ebci_obj$kappa[['estimate']]
+           # params for each sample i 
+           my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
+           my_sigma = 1 # initial estimate standard error
+           my_web = .3   # shrinkage factor
            
-           # check if 0 is in CI with cur_alpha
-           if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
-             cur_min = cur_alpha  
-             new_alpha = (cur_alpha + cur_max) / 2
-           } else { # 0 \not\in CI: decrease alpha to make CI larger
-             cur_max = cur_alpha
-             new_alpha = (cur_alpha + cur_min) / 2
+           # helpful calcs to just perform once
+           sigma2_mu2 = my_sigma^2 / my_mu2  # = m2 in cva function input
+           theta_websigma = abs(my_theta) / (my_web * my_sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
+           
+           
+           
+           iter = 1
+           cur_min = 0; cur_max = 1 # range to search for pseudo p-value
+           cur_alpha = .5 # start in the middle
+           track_alphas = c(cur_alpha)
+           # distance = 10000
+           alpha_change = 1
+           # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
+           while(alpha_change > alpha_threshold & iter <= MAX_ITER_FOR_P) { # by alpha/p-value change
+             cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = my_kappa, check=FALSE, alpha = cur_alpha)$cv
+             print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
+                            iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
+             
+             # check if 0 is in CI with cur_alpha
+             if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
+               cur_min = cur_alpha  
+               new_alpha = (cur_alpha + cur_max) / 2
+             } else { # 0 \not\in CI: decrease alpha to make CI larger
+               cur_max = cur_alpha
+               new_alpha = (cur_alpha + cur_min) / 2
+             }
+             
+             
+             alpha_change = abs(new_alpha - cur_alpha)
+             cur_alpha = new_alpha
+             
+             track_alphas = c(track_alphas, cur_alpha)
+             
+             # distance = theta_websigma - cur_cva_alpha
+             iter = iter + 1
            }
            
-           
-           alpha_change = abs(new_alpha - cur_alpha)
-           cur_alpha = new_alpha
-           
-           track_alphas = c(track_alphas, cur_alpha)
-           
-           # distance = theta_websigma - cur_cva_alpha
-           iter = iter + 1
+           return(cur_alpha)
          }
+         
          
          
          
@@ -448,37 +477,129 @@ plot_df |>
   
   
 
+
+  
+  
+  
 # CI interval
 
 # Error by shrinkage distance?
 
 # Error by shrinkage
 
+  
+  
+# CI Coverage of 0 (ie reject or accept)
+
+ggplot(plot_df |>  mutate(test_type = sapply(true_theta, function(th) {if(th==0){'Null'} else {'Alt'}}))  |>
+  group_by(sim_distn, split_type, method, rank, test_type) |> 
+         summarize(mse = mean((shrunk_value - true_theta)^2), 
+                   rejected = mean(is_sig),
+                   .groups = 'drop') |> 
+         arrange(sim_distn, method, rank, test_type) |> 
+         mutate(methodrank = factor(paste0(method, rank), 
+                                    levels = c("unshrunkallcellsNA",
+                                               "unshrunkNA", 
+                                               "matcomp_linearregNA", 
+                                               paste0("matcomp_softImpute", ranks), 
+                                               paste0("matdecomp_svd", ranks),
+                                               paste0("matdecomp_sparsesvd", ranks)))),
+  aes(x = methodrank, y = rejected)) +
+  geom_hline(aes(yintercept = ALPHA), color = 'orange', alpha = .7) +
+  geom_col() +
+  facet_grid(cols = vars(test_type), rows = vars(sim_distn)) +
+  # coord_cartesian(ylim= c(0, .009)) +
+  labs(title = sprintf('Proportion of Tests Rejected   %s', substr(save_folder, nchar(save_folder) - 1, nchar(save_folder)))) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+
+ggsave(filename = sprintf('%s/shrinkage_rej.pdf', save_folder), width = 6, height = 6)
 ```
+
 
 
 
 ```{r}
-#| eval: true
-#| output: false
-#| warning: false
-#| include: false
-
-# make the matrix and mse plots for all the settings
-for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F')) {
-  # load in save and create sim specific plots
-  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
-  sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
-  
-  
-  make_plots_from_save(sim_results=sim_results,
-                       save_folder=save_folder,
-                       which_plots = list(matrix=TRUE, mse=TRUE),
-                       write_plot_df = FALSE)
-}
-
+# MSE
+ggplot(plot_df |> 
+       filter(method != 'matcomp_linearreg') |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         "zerosNA", 
+                                         "averageNA"))), 
+     aes(x = methodrank, y = mse)) +
+  geom_col(color = 'black', fill = 'gray') +
+  facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+  labs(title = 'MSE', x = 'method + rank', y = 'mse') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
 
 ```
+
+
+```{r}
+
+# CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
+
+# coverage rate
+# ggplot(plot_df |> 
+#        filter(method != 'matcomp_linearreg') |>
+#        mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+#        group_by(sim_distn, split_type, method, rank) |> 
+#        summarize(average_coverage = mean(isTrueThetaCovered), .groups = 'drop') |> 
+#        arrange(sim_distn, split_type, method, rank) |> 
+#        mutate(methodrank = factor(paste0(method, rank), 
+#                               levels = c("unshrunkallcellsNA",
+#                                          "unshrunkNA", 
+#                                          "matcomp_linearregNA", 
+#                                          paste0("matcomp_softImpute", ranks), 
+#                                          paste0("matdecomp_svd", ranks),
+#                                          paste0("matdecomp_sparsesvd", ranks), 
+#                                          "zerosNA", 
+#                                          "averageNA"))), 
+#      aes(x = methodrank, y = average_coverage)) +
+#   geom_col(color = 'black', fill = 'gray') +
+#   geom_hline(aes(yintercept = 1 - sim_results$ALPHA), color = 'orange', alpha = .7) +
+#   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+#   labs(title = 'Average EBCI Coverage', x = 'method + rank', y = 'average coverage') +
+#   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+# miscoverage rate
+ggplot(plot_df |> 
+       filter(method != 'matcomp_linearreg') |>
+       mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         "zerosNA", 
+                                         "averageNA"))), 
+     aes(x = methodrank, y = miscoverage_rate)) +
+  geom_col(color = 'black', fill = 'gray') +
+  geom_hline(aes(yintercept = sim_results$ALPHA), color = 'orange', alpha = .7) +
+  facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+  labs(title = 'EBCI Miscoverage Rate', x = 'method + rank', y = 'miscoverage rate') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+ggsave(filename = sprintf('%s/ebci_miscoveragerate.pdf', save_folder), width = 6, height = 6) 
+
+```
+
+
+
+
 
 
 
@@ -802,6 +923,58 @@ ggplot(plot_df |>
 
 
 
+
+# Many repetitions per setting
+
+
+
+
+```{r}
+
+plan(multisession, workers = 8)
+
+# simulations
+
+
+ALPHA = .1 # PARAMETER
+overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
+
+
+# === SETTING A === (small, easy, fast setting)
+set.seed(12345)
+setting_name = 'A'
+P=5
+G=10
+rank=2
+ThetaA = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=ThetaA,            # true effects ( input NULL if want to simulate)
+  N=500,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = FALSE,
+  repetitions=16, 
+  write_plot_df=FALSE, 
+  parallel=TRUE
+  
+)
+
+# N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
+t1 = Sys.time(); print(t1 - t0) # 47 sec for 16 reps 8 workers
+
+
+
+```
 
 
 

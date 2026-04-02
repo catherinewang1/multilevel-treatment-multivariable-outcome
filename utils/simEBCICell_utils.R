@@ -636,12 +636,66 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
       aes(x = methodrank, y = mse)) +
       geom_col(color = 'black', fill = 'gray') +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+      labs(title = 'MSE', x = 'method + rank', y = 'mse') +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
     
     ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
     return(p_mse)
 }
 
+
+h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder) {
+  # CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
+
+  # coverage rate
+  # ggplot(plot_df |> 
+  #        filter(method != 'matcomp_linearreg') |>
+  #        mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+  #        group_by(sim_distn, split_type, method, rank) |> 
+  #        summarize(average_coverage = mean(isTrueThetaCovered), .groups = 'drop') |> 
+  #        arrange(sim_distn, split_type, method, rank) |> 
+  #        mutate(methodrank = factor(paste0(method, rank), 
+  #                               levels = c("unshrunkallcellsNA",
+  #                                          "unshrunkNA", 
+  #                                          "matcomp_linearregNA", 
+  #                                          paste0("matcomp_softImpute", ranks), 
+  #                                          paste0("matdecomp_svd", ranks),
+  #                                          paste0("matdecomp_sparsesvd", ranks), 
+  #                                          "zerosNA", 
+  #                                          "averageNA"))), 
+  #      aes(x = methodrank, y = average_coverage)) +
+  #   geom_col(color = 'black', fill = 'gray') +
+  #   geom_hline(aes(yintercept = 1 - sim_results$ALPHA), color = 'orange', alpha = .7) +
+  #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+  #   labs(title = 'Average EBCI Coverage', x = 'method + rank', y = 'average coverage') +
+  #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+  # miscoverage rate
+  p_miscoverage = ggplot(plot_df |> 
+         filter(method != 'matcomp_linearreg') |>
+         mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+         group_by(sim_distn, split_type, method, rank) |> 
+         summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
+         arrange(sim_distn, split_type, method, rank) |> 
+         mutate(methodrank = factor(paste0(method, rank), 
+                                levels = c("unshrunkallcellsNA",
+                                           "unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks), 
+                                           "zerosNA", 
+                                           "averageNA"))), 
+       aes(x = methodrank, y = miscoverage_rate)) +
+    geom_col(color = 'black', fill = 'gray') +
+    geom_hline(aes(yintercept = ALPHA), color = 'orange', alpha = .7) +
+    facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+    labs(title = 'EBCI Miscoverage Rate', x = 'method + rank', y = 'miscoverage rate') +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+  ggsave(filename = sprintf('%s/ebci_miscoveragerate.pdf', save_folder), plot = p_miscoverage, width = 6, height = 6) 
+  return(p_miscoverage)
+}
 
 ########################################################
 ##  MAIN FUNCTIONS
@@ -844,6 +898,8 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
     # gridExtra::grid.arrange(grob)
     ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.pdf', save_folder, est_method, chosen_rank_to_plot), grob, width = 28, # 18, 
                                                                                                           height = 12)
+    ggsave(sprintf('%s/ebcimatrices_%s_rank=%d.png', save_folder, est_method, chosen_rank_to_plot), grob, 
+                      width = 28, height = 12, units = 'in', dpi = 300)
 
 }
 
@@ -873,6 +929,12 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
 #' @param ALPHA (numeric) value in [0,1] specifying alpha level for EBCI coverage
 #' @param save_folder (character)
 #' @param make_plots (boolean)
+#' @param write_plot_df (boolean) whether to save the plot_df csv file 
+#'                      (set FALSE to save space. all the info is already in the saved object: sim_results.rds,
+#'                       and remade with the function h5_0_create_plot_df(...))
+#' @param parallel (boolean) whether to run repetitions in parallel (uses future.apply::future_lapply(...). 
+#'                 if true, make sure to remember to set up the session before calling this function. 
+#'                 e.g. library(future.apply); plan(multisession, workers = 4))
 #' @output list of
 #'  all_sim_results = list(est_effects_matrices,
 #'                         est_se_matrices,
@@ -908,94 +970,130 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
 sim_EBCI_celllevel <- function(P, G, rank, Theta,  
                                N, N_control, pi_P, nb_size, 
                                ranks, ALPHA, 
-                               save_folder=NULL, make_plots=FALSE) {
-  # 0. Theta
-  # create treatment effects if not given
-  if(is.null(Theta)) { # simulate true theta
-    Theta = create_blocky_matrix(r = rank, n = P, m = G)
-  } else { # use the given theta, overwrite input P and G
-    P = nrow(Theta)
-    G = ncol(Theta)
-  }
-  Theta_rownames = sprintf("grna%04.f", 1:P) # create names 
-  Theta_colnames = sprintf("gene%04.f", 1:G) # prob should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
-  row.names(Theta) = Theta_rownames
-  colnames( Theta) = Theta_colnames
+                               save_folder=NULL, make_plots=FALSE, repetitions=1, write_plot_df=FALSE, parallel=FALSE) {
   
-  
-  # 1. Simulate cell-level data ----------------------------------------------------------------------------------------  
-  # observed counts for each cell across genes follow pois or nb distribution
-  print('Part 1: ')
-  cell_data = h1_sim_cell_data(N=N, N_control=N_control, pi_P=pi_P, Theta=Theta, constant_coef=constant_coef, nb_size=nb_size)
-  counts = cell_data$counts; grna = cell_data$grna; rm(cell_data)
-  
-  # 2. Estimate effects -------------------------------------------------------------------------------------------
-  print('Part 2: ')
-  est_eff_res = h2_est_effects(counts=counts, grna=grna, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
-  
-  # est_effects_matrices = est_eff_res$est_effects_matrices
-  # est_se_matrices      = est_eff_res$est_se_matrices
-  # allcells_results     = est_eff_res$allcells_results
-  # rm(est_eff_res)
-  
-  # 3. Matrix Decomp/Approximation -------------------------------------------------------------------------------------
-  print('Part 3: ')
-  estimate_matapprox = h3_approximate_matrices(est_effects_matrices=est_eff_res$est_effects_matrices, ranks=ranks, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
-  
-  # 4. Perform EBCI to matrix approx -------------------------------------------------------------------------------------
-  print('Part 4: ')
-  shrinkage_results = h4_perform_ebci(est_effects_matrices = est_eff_res$est_effects_matrices, 
-                                      est_se_matrices      = est_eff_res$est_se_matrices, 
-                                      estimate_matapprox   = estimate_matapprox, 
-                                      ALPHA=ALPHA, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, ranks=ranks)
-  
-  # 5. Plot and save rds  -----------------------------------------------------------------------------------------
-  # if specified to save plots (e.g. valid save_folder and make_plots==TRUE)
-  print('Part 5: ')
-  all_sim_results = list(est_effects_matrices= est_eff_res$est_effects_matrices,
-                         est_se_matrices     = est_eff_res$est_se_matrices,
-                         estimate_matapprox  = estimate_matapprox,
-                         shrinkage_results   = shrinkage_results,
-                         allcells_results    = est_eff_res$allcells_results,
-                         Theta               = Theta, # save some of the parameters used for this sim
-                         P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, 
-                         ALPHA=ALPHA, save_folder=save_folder) 
-  
-  
-  if(!is.null(save_folder) && dir.exists(save_folder)) {
-    # save simulated results
-    saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder))
-    plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks, ALPHA=ALPHA)
-    write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE)
-
-    # additionally, if we want to make plots
-    if(make_plots) {
-      # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
-      # print('Part 5.1: ')
-      # h5_1_plots_summary(shrinkage_results=shrinkage_results, save_folder=save_folder, ranks=ranks)
-      
-      # 5.2 plots of matrices (e.g. Theta, estimates, approx, shrunk, etc...)
-      print('Part 5.2: ')
-      h5_2_plots_matrix(shrinkage_results=shrinkage_results, 
-                        est_effects_matrices=est_eff_res$est_effects_matrices, 
-                        estimate_matapprox=estimate_matapprox, 
-                        save_folder=save_folder, 
-                        allcells_results=est_eff_res$allcells_results, 
-                        Theta=Theta,
-                        ranks=ranks)
-      
-      # 5.3 mse
-      print('Part 5.3: ')
-      
-      h5_3_plots_mse(plot_df=plot_df, ranks=ranks, save_folder=save_folder)
+  #' @param repetition (numeric) or NULL: will change where the results are saved 
+  #'          (e.g. if NULL, save in save_folder, 
+  #'                if integer, save in '<save_folder>/<repetition>')
+  inner_function <- function(repetition=NULL, return_simresult=FALSE) {
+    # 0. Theta
+    # create treatment effects if not given
+    if(is.null(Theta)) { # simulate true theta
+      Theta = create_blocky_matrix(r = rank, n = P, m = G)
+    } else { # use the given theta, overwrite input P and G
+      P = nrow(Theta)
+      G = ncol(Theta)
     }
-
-
-  }
+    Theta_rownames = sprintf("grna%04.f", 1:P) # create names 
+    Theta_colnames = sprintf("gene%04.f", 1:G) # prob should be adaptive to #digits ceiling(nrow(cur_estimates_matrix) / 10)
+    row.names(Theta) = Theta_rownames
+    colnames( Theta) = Theta_colnames
     
+    
+    # 1. Simulate cell-level data ----------------------------------------------------------------------------------------  
+    # observed counts for each cell across genes follow pois or nb distribution
+    print('Part 1: ')
+    cell_data = h1_sim_cell_data(N=N, N_control=N_control, pi_P=pi_P, Theta=Theta, constant_coef=constant_coef, nb_size=nb_size)
+    counts = cell_data$counts; grna = cell_data$grna; rm(cell_data)
+    
+    # 2. Estimate effects -------------------------------------------------------------------------------------------
+    print('Part 2: ')
+    est_eff_res = h2_est_effects(counts=counts, grna=grna, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
+    
+    # est_effects_matrices = est_eff_res$est_effects_matrices
+    # est_se_matrices      = est_eff_res$est_se_matrices
+    # allcells_results     = est_eff_res$allcells_results
+    # rm(est_eff_res)
+    
+    # 3. Matrix Decomp/Approximation -------------------------------------------------------------------------------------
+    print('Part 3: ')
+    estimate_matapprox = h3_approximate_matrices(est_effects_matrices=est_eff_res$est_effects_matrices, ranks=ranks, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
+    
+    # 4. Perform EBCI to matrix approx -------------------------------------------------------------------------------------
+    print('Part 4: ')
+    shrinkage_results = h4_perform_ebci(est_effects_matrices = est_eff_res$est_effects_matrices, 
+                                        est_se_matrices      = est_eff_res$est_se_matrices, 
+                                        estimate_matapprox   = estimate_matapprox, 
+                                        ALPHA=ALPHA, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, ranks=ranks)
+    
+    # 5. Plot and save rds  -----------------------------------------------------------------------------------------
+    # if specified to save plots (e.g. valid save_folder and make_plots==TRUE)
+    print('Part 5: ')
+    all_sim_results = list(est_effects_matrices= est_eff_res$est_effects_matrices,
+                           est_se_matrices     = est_eff_res$est_se_matrices,
+                           estimate_matapprox  = estimate_matapprox,
+                           shrinkage_results   = shrinkage_results,
+                           allcells_results    = est_eff_res$allcells_results,
+                           Theta               = Theta, # save some of the parameters used for this sim
+                           P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, 
+                           ALPHA=ALPHA, save_folder=save_folder, repetition=repetition) 
+    
+    
+    if(!is.null(save_folder) && dir.exists(save_folder)) {      
+      
+      if(is.null(repetition)) { # save in save_folder
+        save_folder_rep = save_folder
+      } else { # save in inner save_folder/<repetition>/
+        save_folder_rep = sprintf('%s/%s/', save_folder, repetition)
+        dir.create(save_folder_rep, showWarnings=FALSE) # outer folder should already exist
+      }
+      
+      # save simulated results
+      saveRDS(object = all_sim_results, file = sprintf('%s/sim_results.rds', save_folder_rep))
+      
+      plot_df = h5_0_create_plot_df(shrinkage_results=shrinkage_results, allcells_results=est_eff_res$allcells_results, ranks=ranks, ALPHA=ALPHA)
+      if(write_plot_df) {
+        write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder_rep), row.names = FALSE)
+      }
+      
+      
+
+      # additionally, if we want to make plots
+      if(make_plots) {
+        # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
+        # print('Part 5.1: ')
+        # h5_1_plots_summary(shrinkage_results=shrinkage_results, save_folder=save_folder, ranks=ranks)
+        
+        # 5.2 plots of matrices (e.g. Theta, estimates, approx, shrunk, etc...)
+        print('Part 5.2: ')
+        h5_2_plots_matrix(shrinkage_results=shrinkage_results, 
+                          est_effects_matrices=est_eff_res$est_effects_matrices, 
+                          estimate_matapprox=estimate_matapprox, 
+                          save_folder=save_folder_rep, 
+                          allcells_results=est_eff_res$allcells_results, 
+                          Theta=Theta,
+                          ranks=ranks)
+        
+        # 5.3 mse
+        print('Part 5.3: ')
+        
+        h5_3_plots_mse(plot_df=plot_df, ranks=ranks, save_folder=save_folder_rep)
+      }
+
+
+    }
+      
+    
+    # return -------------------------------------------------------------------------
+    if(return_simresult) {return(all_sim_results)}
+  }
   
-  # return -------------------------------------------------------------------------
-  return(all_sim_results)
+
+  # run inner_function based on number of repetitions
+  if(repetitions == 1) {
+    inner_function(repetition=NULL,  return_simresult=TRUE)
+  } else if((repetitions  > 0) & (repetitions %% 1 == 0)) { # repetitions should be positive integer
+    if(parallel) {
+      future_lapply(1:repetitions, inner_function, future.seed = TRUE)
+    } else {
+      for(repetition in 1:repetitions) {
+        inner_function(repetition=repetition, return_simresult=FALSE)
+      }
+    }
+    
+  } else {
+    print('bad input: repetitions should be positive integer')
+  }
 }
 
 
@@ -1012,6 +1110,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
 #'                         Theta               = Theta)
 #' @param save_folder (character) 
 #' @param which_plots (list) of named booleans, naming which plots to make
+#'   matrix, mse, miscoverage
 #' @param write_plot_df (boolean) whether or not to save the plot_df
 #' #@param create_default_plots (boolean) whether or not to create default plots that could have
 #' #       been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
@@ -1056,7 +1155,13 @@ make_plots_from_save <- function(sim_results, save_folder, which_plots, write_pl
     print('mse')
     p_mse = h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
   }
-
+  
+  # miscoverage
+  if(('miscoverage' %in% names(which_plots)) & which_plots$miscoverage) {
+    print('miscoverage')
+    h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
+  }
+  
 
 }
 

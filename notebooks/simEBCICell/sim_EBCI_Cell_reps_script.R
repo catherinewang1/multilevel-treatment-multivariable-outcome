@@ -9,7 +9,7 @@ suppressPackageStartupMessages(library(assertthat))
 suppressPackageStartupMessages(library(softImpute))
 suppressPackageStartupMessages(library(latex2exp))
 suppressPackageStartupMessages(library(future.apply))
-plan(multisession, workers = 8)
+plan(multisession, workers = 10)
 # our code
 source('../../utils/matrix_shrinkage.r')
 source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
@@ -19,7 +19,7 @@ source('../../utils/simEBCICell_utils.R')
 
 
 make_plots_forall = FALSE
-repetitions_forall = 4
+repetitions_forall = 20
 parallel_forall = TRUE
 # simulations
 

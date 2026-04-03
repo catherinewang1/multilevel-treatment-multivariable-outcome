@@ -1101,7 +1101,8 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
 
 #' Make plots from previously saved results
 #' saved results should be a list
-#' @param sim_results (list) that is the 'all_sim_results' from the function sim_EBCI_celllevel
+#' @param sim_results_filenames (character or vector of characters) to path and filename(s) of sim_results
+#' (list) that is the 'all_sim_results' from the function sim_EBCI_celllevel
 #' all_sim_results = list(est_effects_matrices= est_eff_res$est_effects_matrices,
 #'                         est_se_matrices     = est_eff_res$est_se_matrices,
 #'                         estimate_matapprox  = estimate_matapprox,
@@ -1116,20 +1117,31 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
 #' #       been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
 #' #       the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
 #' @output 
-make_plots_from_save <- function(sim_results, save_folder, which_plots, write_plot_df=FALSE) {
+make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots, write_plot_df=FALSE, return_plot_df=FALSE) {
 
   if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
   
-  
 
   # create a dataframe for plotting
-  plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
+  if(length(sim_results_filenames) == 1) { # --- 1 repetition
+    sim_results = readRDS(sim_results_filenames)
+    plot_df = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
+  } else {                                 # --- many repetitions
+    plot_df = NULL
+    for(fn in sim_results_filenames) {
+      sim_results = readRDS(fn) 
+      plot_df_ = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
+      plot_df_$filename = fn
+      plot_df_$repetition = sim_results$repetition
+      plot_df = rbind(plot_df, plot_df_); rm(plot_df_)
+    }
+  }
+  
   if(write_plot_df) {
     write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE) # save plotting df
   }
   
-  
-  # 5.2 matrix plots
+  # 5.2 matrix plots- if multiple reps, will only plot using the LAST repetition e.g. A/1/sim_results.rds
   if(('matrix' %in% names(which_plots)) & which_plots$matrix) {
     # if we want to make defulat plots
     # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
@@ -1159,10 +1171,11 @@ make_plots_from_save <- function(sim_results, save_folder, which_plots, write_pl
   # miscoverage
   if(('miscoverage' %in% names(which_plots)) & which_plots$miscoverage) {
     print('miscoverage')
-    h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
+    p_miscoverage = h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
   }
   
-
+  if(return_plot_df) {return(plot_df)}
+  
 }
 
 ########################################################

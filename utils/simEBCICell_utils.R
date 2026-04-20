@@ -478,13 +478,15 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                             ALPHA, Theta, Theta_rownames, Theta_colnames, ranks) {
   
   # use shrink_matrix from utils/matrix_shrinkage.r
-  shrinkage_results = list()
+  ebci_params       = list() # estimated parameters from ebci fit
+  shrinkage_results = list() # results from shrinkage
   for(est_method in names(est_effects_matrices)) { # pois or nb
     shrinkage_results[[est_method]] = list()
-    
+    ebci_params      [[est_method]] = list()
     # do 2 categories of shrinkage: sample split (train towards test), no sample split (all towards all)
     for(splittype in c('samplesplit', 'nosamplesplit')) {
       shrinkage_results[[est_method]][[splittype]] = list()
+      ebci_params      [[est_method]][[splittype]] = list()
 
       if(splittype == 'samplesplit') {
           cur_estimates_mat = est_effects_matrices[[est_method]][['test']] # matrix of estimates to shrink
@@ -513,15 +515,15 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
           
           
           # shrink matrix
-          cur_shrink_res = 
+          shrink_mat_res =  
             shrink_matrix(unshrunk_mat = cur_estimates_mat,
                           shrinkpoint_mat = cur_shrinkagepoint_mat,
                           se_mat = cur_se_mat,
                           ALPHA = ALPHA,
-                          return_ebci_obj=FALSE,
+                          return_ebci_obj=TRUE,
                           weight_mat=NULL)
           # add true theta values
-          cur_shrink_res = merge(cur_shrink_res, 
+          cur_shrink_res = merge(shrink_mat_res$ebci_res, 
                                  reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
                                  by = c('grna', 'gene'))
           # add idx for plotting later
@@ -530,9 +532,12 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                                        by = 'grna'), 
                                  data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
                                  by = 'gene')
+          
+          cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
+          
           # save result
           shrinkage_results[[est_method]][[splittype]][[approx_method]] = cur_shrink_res
-    
+          ebci_params      [[est_method]][[splittype]][[approx_method]] = shrink_mat_res$ebci_obj[c('mu2', 'kappa', 'delta', 'alpha')]
           
         } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
           for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
@@ -547,15 +552,15 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
             }
 
             # shrink matrix
-            cur_shrink_res = 
+            shrink_mat_res = 
               shrink_matrix(unshrunk_mat = cur_estimates_mat,
-                          shrinkpoint_mat = cur_shrinkagepoint_mat,
-                          se_mat = cur_se_mat,
-                          ALPHA = ALPHA,
-                          return_ebci_obj=FALSE,
-                          weight_mat=NULL)
+                            shrinkpoint_mat = cur_shrinkagepoint_mat,
+                            se_mat = cur_se_mat,
+                            ALPHA = ALPHA,
+                            return_ebci_obj=TRUE,
+                            weight_mat=NULL)
             # add true theta values
-            cur_shrink_res = merge(cur_shrink_res, 
+            cur_shrink_res = merge(shrink_mat_res$ebci_res, 
                                    reshape2::melt(Theta, varnames = c('grna', 'gene'), value.name = 'true_theta'),
                                    by = c('grna', 'gene'))
             # add idx for plotting later
@@ -564,8 +569,12 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                                          by = 'grna'), 
                                    data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
                                    by = 'gene')
+
+            cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
+
             # save result
             shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]] = cur_shrink_res
+            ebci_params      [[est_method]][[splittype]][[approx_method]][[r]] = shrink_mat_res$ebci_obj[c('mu2', 'kappa', 'delta', 'alpha')]
             
           }
           
@@ -578,7 +587,30 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
 
   }
 
-  return(shrinkage_results)
+  return(list(shrinkage_results=shrinkage_results,
+              ebci_params=ebci_params))
+}
+
+#' Helper function for: sim_EBCI_celllevel
+#' 4 get the average pvals (inverted from ebci) 
+#' @param shrinkage_results_df (dataframe) result of  shrink_matrix(...)$ebci_res a dataframe w shrinkage results
+#' @param ebci_obj (ebci_object) that has the parameter estimates (mu2, kappa)
+h4_1_ebci_pvals <- function(shrinkage_results_df, ebci_obj) {
+  cur_mu2   = ebci_obj$mu2['estimate']
+  cur_kappa = ebci_obj$kappa['estimate']
+  
+  average_pvals = rep(NA, times = nrow(shrinkage_results_df))
+  for(i in 1:nrow(shrinkage_results_df)) {
+    average_pvals[i] = 
+      get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
+                             sigma           = shrinkage_results_df[i, 'se'], 
+                             web             = shrinkage_results_df[i, 'w_eb'] , 
+                             mu2             = cur_mu2, 
+                             kappa           = cur_kappa,
+                             alpha_threshold = .001, 
+                             maxiter         = 10) 
+  }
+  return(average_pvals)
 }
 
 #' Helper function for: sim_EBCI_celllevel
@@ -694,7 +726,8 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
                                        weight = NA, 
                                        shrunk_value    = estimate,
                                        unshrunk_value  = estimate,
-                                       w_eb            = NA)  |> 
+                                       w_eb            = NA,
+                                       ebci_pvals      = NA)  |> 
                          dplyr::select(all_of(colnames(plot_df_))) )
       for(approx_method in names(shrinkage_results[[est_method]][[splittype]])) {
          # if there are not ranks (eg linearreg)
@@ -717,7 +750,7 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
     }
     
     plot_df$method = factor(plot_df$method, 
-                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd", "zeros", "average"))
+                            levels = c("unshrunkallcells" , "unshrunk", "matcomp_linearreg", "matcomp_softImpute", "matdecomp_svd", "matdecomp_sparsesvd", "spectralbiclust", "spectralbiclust_threshold", "zeros", "average"))
     
 
     return(plot_df)
@@ -758,6 +791,8 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
                                          paste0("matcomp_softImpute", ranks), 
                                          paste0("matdecomp_svd", ranks),
                                          paste0("matdecomp_sparsesvd", ranks), 
+                                         paste0("spectralbiclust", ranks), 
+                                         paste0("spectralbiclust_threshold", ranks), 
                                          "zerosNA", 
                                          "averageNA"))), 
       aes(x = methodrank, y = mse)) +
@@ -767,6 +802,31 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
       theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
     
     ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
+
+    p_mse_nonzero = ggplot(plot_df |> 
+       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly 
+       filter(true_theta != 0) |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         paste0("spectralbiclust", ranks), 
+                                         paste0("spectralbiclust_threshold", ranks), 
+                                         "zerosNA", 
+                                         "averageNA"))), 
+      aes(x = methodrank, y = mse)) +
+      geom_col(color = 'black', fill = 'gray') +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+      labs(title = 'MSE', x = 'method + rank', y = 'mse') +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+    
+    ggsave(filename = sprintf('%s/shrinkage_mse_nonzero.pdf', save_folder), plot = p_mse_nonzero, width = 6, height = 6) 
     return(p_mse)
 }
 
@@ -811,6 +871,8 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder) {
                                            paste0("matcomp_softImpute", ranks), 
                                            paste0("matdecomp_svd", ranks),
                                            paste0("matdecomp_sparsesvd", ranks), 
+                                           paste0("spectralbiclust", ranks), 
+                                           paste0("spectralbiclust_threshold", ranks), 
                                            "zerosNA", 
                                            "averageNA"))), 
        aes(x = methodrank, y = miscoverage_rate)) +
@@ -1141,11 +1203,13 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
     
     # 4. Perform EBCI to matrix approx -------------------------------------------------------------------------------------
     print('Part 4: ')
-    shrinkage_results = h4_perform_ebci(est_effects_matrices = est_eff_res$est_effects_matrices, 
+    h4_res = h4_perform_ebci(est_effects_matrices = est_eff_res$est_effects_matrices, 
                                         est_se_matrices      = est_eff_res$est_se_matrices, 
                                         estimate_matapprox   = estimate_matapprox, 
                                         ALPHA=ALPHA, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, ranks=ranks)
-    
+    shrinkage_results = h4_res$shrinkage_results
+    ebci_params       = h4_res$ebci_params
+    rm(h4_res)
     # 5. Plot and save rds  -----------------------------------------------------------------------------------------
     # if specified to save plots (e.g. valid save_folder and make_plots==TRUE)
     print('Part 5: ')
@@ -1153,6 +1217,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
                            est_se_matrices     = est_eff_res$est_se_matrices,
                            estimate_matapprox  = estimate_matapprox,
                            shrinkage_results   = shrinkage_results,
+                           ebci_params         = ebci_params,
                            allcells_results    = est_eff_res$allcells_results,
                            Theta               = Theta, # save some of the parameters used for this sim
                            P=P, G=G, N=N, N_control=N_control, pi_P=pi_P, nb_size=nb_size, ranks=ranks, 
@@ -1247,7 +1312,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
 #' #       been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
 #' #       the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
 #' @output 
-make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots, write_plot_df=FALSE, return_plot_df=FALSE) {
+make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots, write_plot_df=FALSE, write_summary_df=FALSE, return_plot_df=FALSE) {
 
   if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
   
@@ -1267,8 +1332,33 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
     }
   }
   
+  # if specified, save the plot_df (this is very large)
   if(write_plot_df) {
     write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE) # save plotting df
+  }
+  # if specified, save the summary_df (this is reasonable, try to save this)
+  if(write_summary_df) {
+    summary_df = plot_df |> 
+       # filter(method != 'matcomp_linearreg') |>
+       mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), 
+                 mse = mean((shrunk_value - true_theta)^2), 
+                 .groups = 'drop') |> 
+       arrange(sim_distn, split_type, method, rank) |> 
+       mutate(methodrank = factor(paste0(method, rank), 
+                              levels = c("unshrunkallcellsNA",
+                                         "unshrunkNA", 
+                                         "matcomp_linearregNA", 
+                                         paste0("matcomp_softImpute", ranks), 
+                                         paste0("matdecomp_svd", ranks),
+                                         paste0("matdecomp_sparsesvd", ranks), 
+                                         paste0("spectralbiclust", ranks), 
+                                         paste0("spectralbiclust_threshold", ranks), 
+                                         "zerosNA", 
+                                         "averageNA")))
+    
+    write.csv(x = summary_df, file = sprintf('%s/sim_summary_df.csv', save_folder), row.names = FALSE) # save plotting df
   }
   
   # 5.2 matrix plots- if multiple reps, will only plot using the LAST repetition e.g. A/1/sim_results.rds
@@ -1291,6 +1381,11 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
     
     
   }
+  # # plot individual matrices
+  # if(('matrix_individual' %in% names(which_plots)) & which_plots$matrix_individual) {
+
+
+  # }
 
   # 5.3 mse
   if(('mse' %in% names(which_plots)) & which_plots$mse) {
@@ -1303,6 +1398,7 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
     print('miscoverage')
     p_miscoverage = h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
   }
+  
   
   if(return_plot_df) {return(plot_df)}
   
@@ -1752,3 +1848,77 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
 #   # return -------------------------------------------------------------------------
 #   return(all_sim_results)
 # }
+
+
+
+
+#' description: Create the pseudo p-value: Find the smallest alpha that does not cover 0 OR the largest alpha that still covers 0
+#'  The CI is shrunk estimate +- cva * w_eb * sigma
+#'  because of the way we call the function, we have our original estimate thetahat and shrinkagepoint
+#'  and we shrink (thetahat - shrinkagepoint) towards 0 always to then get thetaeb(this is because we have diff shrinkage points for all the points)
+#'  and then we add back the shrinkage point shrunkpoint = thetaeb + shrinkagepoint <-- this is the value to to input into this function, because the CI is centered around this point
+#' @param thetashrunk (numeric) shrunkpoint = thetaeb + shrinkagepoint where is the thetaeb is the (thetahat - shrinkagepoint) shrunk towards 0
+#' @param sigma (numeric)
+#' @param web (numeric) shrinkage factor from ebci object result
+#' @param mu2 (numeric) estimated mu2 from ebci object result
+#' @param kappa (numeric) estimated kappa from ebci object result
+#' @param threshold (numeric) stop condition: perform until alpha's changes are < threshold
+#'                            this is the max mis calc error for the pseudo-pval (if MAX_ITER is not reached)
+#' @param maxiter (numeric) stop condition: maximum number of iterations to perform
+#' 
+#' @returns pseudopval (numeric) \in [0,1]
+#' 
+#' 
+get_ebci_average_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
+                                  alpha_threshold, maxiter) {
+  # # params for running 
+  # MAX_ITER_FOR_P = 20    # limit the number of iterations
+  # # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
+  # alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
+  # # estimate from overall ebci fit
+  # my_mu2 = ebci_obj$mu2[['estimate']]
+  # my_kappa = ebci_obj$kappa[['estimate']]
+  # # params for each sample i 
+  # my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
+  # my_sigma = 1 # initial estimate standard error
+  # my_web = .3   # shrinkage factor
+
+  # helpful calcs to just perform once
+  sigma2_mu2 = sigma^2 / mu2  # = m2 in cva function input
+  theta_websigma = abs(thetashrunk) / (web * sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
+
+
+
+  iter = 1
+  cur_min = 0; cur_max = 1 # range to search for pseudo p-value
+  cur_alpha = .5 # start in the middle
+  track_alphas = c(cur_alpha)
+  # distance = 10000
+  alpha_change = 1
+  # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
+  while(alpha_change > alpha_threshold & iter <= maxiter) { # by alpha/p-value change
+   cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = kappa, check=FALSE, alpha = cur_alpha)$cv
+   # print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
+   #                iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
+   
+   # check if 0 is in CI with cur_alpha
+   if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
+     cur_min = cur_alpha  
+     new_alpha = (cur_alpha + cur_max) / 2
+   } else { # 0 \not\in CI: decrease alpha to make CI larger
+     cur_max = cur_alpha
+     new_alpha = (cur_alpha + cur_min) / 2
+   }
+   
+   
+   alpha_change = abs(new_alpha - cur_alpha)
+   cur_alpha = new_alpha
+   
+   track_alphas = c(track_alphas, cur_alpha)
+   
+   # distance = theta_websigma - cur_cva_alpha
+   iter = iter + 1
+  }
+
+  return(cur_alpha)
+}

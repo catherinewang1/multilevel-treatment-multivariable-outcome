@@ -8,6 +8,7 @@ suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
 suppressPackageStartupMessages(library(assertthat)) 
 suppressPackageStartupMessages(library(softImpute))
 suppressPackageStartupMessages(library(latex2exp))
+suppressPackageStartupMessages(library(biclust))
 suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 10)
 # our code
@@ -20,6 +21,9 @@ source('../../utils/simEBCICell_utils.R')
 
 make_plots_forall = FALSE
 repetitions_forall = 20
+# repetitions_forall = 3
+matapprox_methods_forall = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
+cell_distns_forall = c('pois', 'nb')
 parallel_forall = TRUE
 # simulations
 
@@ -44,11 +48,13 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=ThetaA,            # true effects ( input NULL if want to simulate)
+  cell_distns = cell_distns_forall, # cell_distns (pois/nb)
   N=500,                 # number of treated cells
   N_control=500,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
+  matapprox_methods = matapprox_methods_forall, # matrix approx methods
   save_folder=save_folder,# folder to save results and plots
   make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
   repetitions=repetitions_forall, # number of repetitions
@@ -162,11 +168,13 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=Theta,            # true effects ( input NULL if want to simulate)
+  cell_distns = cell_distns_forall, # cell_distns (pois/nb)
   N=2000,                 # number of treated cells
   N_control=200,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
+  matapprox_methods = matapprox_methods_forall, # matrix approx methods
   save_folder=save_folder,# folder to save results and plots
   make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
   repetitions=repetitions_forall, # number of repetitions

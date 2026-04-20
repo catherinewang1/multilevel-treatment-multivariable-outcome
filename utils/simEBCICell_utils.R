@@ -14,6 +14,9 @@
 #  
 
 
+require(biclust)
+
+
 ########################################################
 ##  Helper FUNCTIONS (e.g. should be private functions)
 ########################################################
@@ -26,6 +29,7 @@
 #' @param Theta (matrix) of effects P x G
 #' # @param grna (list) of 2 matrices ($train and $test) showing grna assignments N x P
 #' # @param constant_coef (numeric or vector of length G) constant coeff for glm samples 
+#' @param cell_distns (vector) of distributions for the cells, some subset of c('pois', 'nb')
 #' @param nb_size (numeric) size param for neg bin samples
 #' @output counts (list) $<distribution>$<treatment group>$<split>
 #' e.g.
@@ -38,7 +42,7 @@
 #'       $nb
 #'            ...
 #' @examples
-h1_sim_cell_data <- function(N, N_control, pi_P, Theta, constant_coef, nb_size) {
+h1_sim_cell_data <- function(N, N_control, pi_P, Theta, constant_coef, cell_distns, nb_size) {
 
   constant_coef = runif(n = G, min = .1, max = 2) # overall mean across genes (mean for untreated/control cells)
 
@@ -48,46 +52,86 @@ h1_sim_cell_data <- function(N, N_control, pi_P, Theta, constant_coef, nb_size) 
   grna$train =  t(rmultinom(n=N, size=1, prob=pi_P)) # n x p (#cells x #perturbations)
   grna$test  =  t(rmultinom(n=N, size=1, prob=pi_P)) 
   
-
   # 1. Simulate cell-level data -------------------------------------------------------------------------------------
   # mean effect levels for treatment cells (given constant_coef + effects from Theta)
   cell_mean_effects = list()
   cell_mean_effects$train = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$train %*% Theta
   cell_mean_effects$test  = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$test  %*% Theta
-  
-  
+
   # observed counts for each cell across genes follow pois or nb distribution
   counts           = list()
-  counts$pois      = list()
-  counts$nb        = list()
+  for(distn_name in cell_distns) {
+    counts[[distn_name]] = list()
+    counts[[distn_name]]$treatment = list()
+    counts[[distn_name]]$control   = list()
 
-  counts$pois$treatment = list()
-  counts$pois$control   = list()
-  counts$nb$treatment   = list()
-  counts$nb$control     = list()
-  
-  counts$pois$treatment$train = matrix(NA, nrow = N, ncol = G) # treated cells # train
-  counts$pois$treatment$test  = matrix(NA, nrow = N, ncol = G)                 # test 
-  counts$nb$treatment$train   = matrix(NA, nrow = N, ncol = G)                 # train 
-  counts$nb$treatment$test    = matrix(NA, nrow = N, ncol = G)                 # test  
-  
-  counts$pois$control$train = matrix(NA, nrow = N_control, ncol = G) # control cells # train
-  counts$pois$control$test  = matrix(NA, nrow = N_control, ncol = G)                 # test
-  counts$nb$control$train   = matrix(NA, nrow = N_control, ncol = G)                 # train 
-  counts$nb$control$test    = matrix(NA, nrow = N_control, ncol = G)                 # test 
-  
-  for(j in 1:G) {
-    counts$pois$treatment$train[,j] = rpois(  n=N,                lambda = exp(cell_mean_effects$train[,j])) 
-    counts$pois$treatment$test[,j]  = rpois(  n=N,                lambda = exp(cell_mean_effects$test[,j])) 
-    counts$nb$treatment$train[,j]   = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$train[,j]))
-    counts$nb$treatment$test[,j]    = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$test[,j]))
+    counts[[distn_name]]$treatment$train = matrix(NA, nrow = N, ncol = G) # treated cells # train
+    counts[[distn_name]]$treatment$test  = matrix(NA, nrow = N, ncol = G)                 # test 
+    counts[[distn_name]]$control$train   = matrix(NA, nrow = N_control, ncol = G) # control cells # train
+    counts[[distn_name]]$control$test    = matrix(NA, nrow = N_control, ncol = G)                 # test
     
-    counts$pois$control$train[,j]   = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
-    counts$pois$control$test[,j]    = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
-    counts$nb$control$train[,j]     = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
-    counts$nb$control$test[,j]      = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
-    
+    if(distn_name == 'pois') {
+      for(j in 1:G) {      
+        counts$pois$treatment$train[,j] = rpois(  n=N,                lambda = exp(cell_mean_effects$train[,j])) 
+        counts$pois$treatment$test[,j]  = rpois(  n=N,                lambda = exp(cell_mean_effects$test[,j])) 
+
+        counts$pois$control$train[,j]   = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+        counts$pois$control$test[,j]    = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+      } 
+    } else if(distn_name == 'nb') {
+      for(j in 1:G) {
+        counts$nb$treatment$train[,j]   = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$train[,j]))
+        counts$nb$treatment$test[,j]    = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$test[,j]))
+
+        counts$nb$control$train[,j]     = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+        counts$nb$control$test[,j]      = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+      }
+    } else {
+      print("h1_sim_cell_data: bad cell_distns input, must be 'pois' and/or 'nb'")
+    }   
   }
+
+
+
+  # # 1. Simulate cell-level data -------------------------------------------------------------------------------------
+  # # mean effect levels for treatment cells (given constant_coef + effects from Theta)
+  # cell_mean_effects = list()
+  # cell_mean_effects$train = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$train %*% Theta
+  # cell_mean_effects$test  = matrix(rep(constant_coef, times = N), byrow = TRUE, nrow = N) + grna$test  %*% Theta
+  
+  
+  # # observed counts for each cell across genes follow pois or nb distribution
+  # counts           = list()
+  # counts$pois      = list()
+  # counts$nb        = list()
+
+  # counts$pois$treatment = list()
+  # counts$pois$control   = list()
+  # counts$nb$treatment   = list()
+  # counts$nb$control     = list()
+  
+  # counts$pois$treatment$train = matrix(NA, nrow = N, ncol = G) # treated cells # train
+  # counts$pois$treatment$test  = matrix(NA, nrow = N, ncol = G)                 # test 
+  # counts$nb$treatment$train   = matrix(NA, nrow = N, ncol = G)                 # train 
+  # counts$nb$treatment$test    = matrix(NA, nrow = N, ncol = G)                 # test  
+  
+  # counts$pois$control$train = matrix(NA, nrow = N_control, ncol = G) # control cells # train
+  # counts$pois$control$test  = matrix(NA, nrow = N_control, ncol = G)                 # test
+  # counts$nb$control$train   = matrix(NA, nrow = N_control, ncol = G)                 # train 
+  # counts$nb$control$test    = matrix(NA, nrow = N_control, ncol = G)                 # test 
+  
+  # for(j in 1:G) {
+  #   counts$pois$treatment$train[,j] = rpois(  n=N,                lambda = exp(cell_mean_effects$train[,j])) 
+  #   counts$pois$treatment$test[,j]  = rpois(  n=N,                lambda = exp(cell_mean_effects$test[,j])) 
+  #   counts$nb$treatment$train[,j]   = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$train[,j]))
+  #   counts$nb$treatment$test[,j]    = rnbinom(n=N, size = nb_size,    mu = exp(cell_mean_effects$test[,j]))
+    
+  #   counts$pois$control$train[,j]   = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+  #   counts$pois$control$test[,j]    = rpois(  n=N_control,                lambda = exp(constant_coef[j])) 
+  #   counts$nb$control$train[,j]     = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+  #   counts$nb$control$test[,j]      = rnbinom(n=N_control, size = nb_size,    mu = exp(constant_coef[j]))
+    
+  # }
 
   return(list(counts=counts, grna=grna))
 }
@@ -137,13 +181,13 @@ h2_est_effects <- function(counts, grna, Theta, Theta_rownames, Theta_colnames) 
   # t0 = Sys.time()
   est_effects_matrices = list()
   est_se_matrices      = list()
-  for(est_method in c('pois', 'nb')) {
+  for(est_method in names(counts)) {
+  # for(est_method in c('pois', 'nb')) {
     est_effects_matrices[[est_method]] = list()
     est_se_matrices     [[est_method]] = list()
     for(split in c('train', 'test', 'all')) {
       est_effects_matrices[[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(Theta_rownames, Theta_colnames))  
       est_se_matrices     [[est_method]][[split]] = matrix(NA, nrow = P, ncol = G, dimnames = list(Theta_rownames, Theta_colnames))  
-      
       
       # estimate for each perturbation,gene
       for(i in 1:P) {
@@ -190,7 +234,8 @@ h2_est_effects <- function(counts, grna, Theta, Theta_rownames, Theta_colnames) 
 
   # combine results for 'all' using all cells (standard method)
   allcells_results = list()
-  for(est_method in c('pois', 'nb')) {
+  for(est_method in names(counts)) {
+  # for(est_method in c('pois', 'nb')) {
     cur_df = 
       merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]], value.name = 'estimate', varnames = c('grna', 'gene')),
             merge(reshape2::melt(est_effects_matrices[[est_method]][['all'  ]] - qnorm(1 - ALPHA/2) * est_se_matrices[[est_method]][['all'  ]], 
@@ -290,8 +335,70 @@ h3_1_approximate_matrix <- function(mat, method, ranks, Theta_rownames, Theta_co
       mat_approx_res[[r]] = cur_matapprox
       rm(cur_matapprox)
     }
+  } 
+  # === Clustering methods
+  else if(method == 'spectralbiclust' | method == 'spectralbiclust_threshold') {
+    # with the way that this is called, the spectral biclustering will be performed 2x as many times it needs to...
+    mat_approx_res = list()
+    for(r in ranks) {
+      # try, or else return null
+      inner_biclustspectral = function() {
+        spbicl_res = biclust::spectral(mat,
+                   # normalization = "bistochastization", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
+                   # normalization = "log", # they recommend log even w their example matrix of negative values?
+                   numberOfEigenvalues = 1, # here use ranks? or n_best?
+                   minr=2, minc=2, withinVar=2, n_clusters = NULL, 
+                   n_best = 1 # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
+                   )
+        row_cl = data.frame(row_idx = row.names(mat), 
+                            row_cl  = spbicl_res@info$row_labels)
+        col_cl = data.frame(col_idx = colnames(mat), 
+                            col_cl  = spbicl_res@info$column_labels)
+
+        bicluster_assignment = merge(reshape2::melt(mat, varnames = c('row_idx', 'col_idx'), value.name = 'value'), 
+                                     tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
+                                     by = c('row_idx', 'col_idx'))
+        if(method == 'spectralbiclust') {
+          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value))
+          biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                          dplyr::select(row_idx, col_idx, bicl_mean) |> dplyr::arrange(row_idx, col_idx), 
+                                        row_idx ~ col_idx, value.var="bicl_mean")
+        
+        } else if(method == 'spectralbiclust_threshold') {
+          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), bicl_sd = sd(value), count = dplyr::n())
+          nbiclusters = nrow(biclust_mean) 
+          # zero out if pval is sig dif from 0 w bonferonni correction at alpha=.05 (very rough)
+          # from normalization procedure and biclustering, each bicluster should have sd around 1, I think?
+          biclust_mean = biclust_mean |> dplyr::mutate(zstat = (bicl_mean - 0)/(bicl_sd/sqrt(count)), pval = pnorm(-abs(zstat)), zeroed = as.integer(pval > .05/nbiclusters), bicl_mean_zeroed = (1 - zeroed) * bicl_mean)        
+          
+          biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                        dplyr::select(row_idx, col_idx, bicl_mean_zeroed) |> dplyr::arrange(row_idx, col_idx), 
+                                        row_idx ~ col_idx, value.var="bicl_mean_zeroed")
+        }
+        row.names(biclust_mat) = Theta_rownames; colnames(biclust_mat) = Theta_colnames
+        return(biclust_mat)
+      }
+
+      biclust_mat = tryCatch(expr = {inner_biclustspectral()},
+                             error = function(e) {'badfit'}
+                    )
+      # # Without specifying the  number of row and column clusters
+      # spbicl_res = biclust::spectral(mat,
+      #              # normalization = "irrc", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
+      #              normalization = "log", # they recommend log even w their example matrix of negative values?
+      #              numberOfEigenvalues = r, # here use ranks? or n_best?
+      #              minr=2, minc=2, 
+      #              withinVar=2, # this should be chosen more carefully
+      #              n_clusters = NULL, 
+      #              n_best = 3 # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
+      #              )
+      
+
+      mat_approx_res[[r]] = biclust_mat
+    }    
+  }
   # === Basic Shrinkage Points
-  } else if(method == 'zeros') { 
+  else if(method == 'zeros') { 
     # --- zero 0
     mat_approx_res = matrix(0,         nrow = n, ncol = m, dimnames = list(Theta_rownames, Theta_colnames))
   } else if (method == 'average') {
@@ -322,10 +429,15 @@ h3_1_approximate_matrix <- function(mat, method, ranks, Theta_rownames, Theta_co
 #' 
 #' @param est_effects_matrices
 #' @param ranks
+#' @param Theta_rownmames (vector) of characters for rowname assignments (length P=#perturbations)
+#' @param Theta_colnmames (vector) of characters for colname assignments (length G=#genes)
+#' @param matapprox_methods (vector) of characters e.g c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
 #' @output estimate_matapprox
-h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames) {
+h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames, Theta_colnames, matapprox_methods=NULL) {
   estimate_matapprox = list()
-  for(distn_name in c('pois', 'nb')) {
+  
+  for(distn_name in names(est_effects_matrices)) {
+  # for(distn_name in c('pois', 'nb')) {
     estimate_matapprox      [[distn_name]] = list()
     
     # for(split in c('train', 'test', 'all')) {
@@ -333,11 +445,16 @@ h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames=
       estimate_matapprox[[distn_name]][[split]] = list()
       cur_mat = est_effects_matrices[[distn_name]][[split]] # matrix to make approximations of
       # n = nrow(cur_mat); m = ncol(cur_mat)
-      
-      matapprox_methods = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'zeros', 'average')
+      if(is.null(matapprox_methods)) {
+        matapprox_methods = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
+      }
       for(matapprox_method in matapprox_methods) {
-        estimate_matapprox[[distn_name]][[split]][[matapprox_method]] = h3_1_approximate_matrix(mat = cur_mat,  method = matapprox_method, ranks = ranks,
-                                                                                                Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
+        approximated_matrix = h3_1_approximate_matrix(mat = cur_mat,  method = matapprox_method, ranks = ranks,
+                                                      Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
+        # if(!is.null(approximated_matrix)) { # only add if the result is not null (e.g. the approx orks)
+        #   estimate_matapprox[[distn_name]][[split]][[matapprox_method]] = approximated_matrix
+        # }
+        estimate_matapprox[[distn_name]][[split]][[matapprox_method]] = approximated_matrix
       }
     }
   }
@@ -419,7 +536,16 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
           
         } else { # if there are ranks (eg softImpute, svd, sparse svd, ..) 
           for(r in ranks) { # if there was an error estimating some subset of ranks, then this might cause issues
-            cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]][[r]]
+            if(splittype == 'samplesplit') {
+                cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['train']][[approx_method]][[r]] # matrix to shrink towards
+            } else if(splittype == 'nosamplesplit') {
+                cur_shrinkagepoint_mat = estimate_matapprox[[est_method]][['all']][[approx_method]][[r]] # matrix to shrink towards
+            }
+
+            if(!is.matrix(cur_shrinkagepoint_mat))  { # if mat approx as bad, skip
+              next()
+            }
+
             # shrink matrix
             cur_shrink_res = 
               shrink_matrix(unshrunk_mat = cur_estimates_mat,
@@ -522,7 +648,8 @@ h5_1_plots_summary <- function(shrinkage_results, save_folder, ranks) {
 #' @param ranks
 h5_2_plots_matrix <- function(shrinkage_results, est_effects_matrices, estimate_matapprox, 
                               save_folder, allcells_results, Theta, ranks) {
-  for(est_method in c('pois', 'nb')) {
+  # for(est_method in c('pois', 'nb')) {
+  for(est_method in names(shrinkage_results)) {
     for(r in ranks) {
       # for(splittype in c('samplesplit', 'nosamplesplit')) {
         # print(sprintf("Part 5.2 %s %s", est_method, r))
@@ -921,12 +1048,14 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
 #' @param rank (integer) rank of treatment effects matrix (used if is.null(Theta))
 #' @param Theta (matrix) of treatment effects (either give a Theta or set=NULL to create a Theta using other parameters 
 #'                       P,G,rank)
+#' @param cell_distns (vector) of distributions for the cells, some subset of c('pois', 'nb')
 #' @param N (integer) sample size of total treated cells 
 #' @param N_control (integer) sample size of non-treated/control cells
 #' @param pi_P (vector) of probabilities of assignment to each perturbation/treatment
 #' @param nb_size (numeric or vector) of size parameter in negative binomial model
 #' @param ranks (vector) of integers specifyin matrix approx ranks
 #' @param ALPHA (numeric) value in [0,1] specifying alpha level for EBCI coverage
+#' @param matapprox_methods (vector) of characters e.g c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'spectralbiclust', 'zeros', 'average')
 #' @param save_folder (character)
 #' @param make_plots (boolean)
 #' @param write_plot_df (boolean) whether to save the plot_df csv file 
@@ -967,9 +1096,10 @@ make_matrix_ebci_plots <- function(est_method, chosen_rank_to_plot,
 #'                    save_folder=save_folder # folder to save results and plots
 #' )
 #' t1 = Sys.time(); print(t1 - t0) # 4 mins
-sim_EBCI_celllevel <- function(P, G, rank, Theta,  
+sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns, 
                                N, N_control, pi_P, nb_size, 
                                ranks, ALPHA, 
+                               matapprox_methods=NULL,
                                save_folder=NULL, make_plots=FALSE, repetitions=1, write_plot_df=FALSE, parallel=FALSE) {
   
   #' @param repetition (numeric) or NULL: will change where the results are saved 
@@ -993,7 +1123,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
     # 1. Simulate cell-level data ----------------------------------------------------------------------------------------  
     # observed counts for each cell across genes follow pois or nb distribution
     print('Part 1: ')
-    cell_data = h1_sim_cell_data(N=N, N_control=N_control, pi_P=pi_P, Theta=Theta, constant_coef=constant_coef, nb_size=nb_size)
+    cell_data = h1_sim_cell_data(N=N, N_control=N_control, pi_P=pi_P, Theta=Theta, constant_coef=constant_coef, cell_distns=cell_distns, nb_size=nb_size)
     counts = cell_data$counts; grna = cell_data$grna; rm(cell_data)
     
     # 2. Estimate effects -------------------------------------------------------------------------------------------
@@ -1007,7 +1137,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta,
     
     # 3. Matrix Decomp/Approximation -------------------------------------------------------------------------------------
     print('Part 3: ')
-    estimate_matapprox = h3_approximate_matrices(est_effects_matrices=est_eff_res$est_effects_matrices, ranks=ranks, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames)
+    estimate_matapprox = h3_approximate_matrices(est_effects_matrices=est_eff_res$est_effects_matrices, ranks=ranks, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, matapprox_methods=matapprox_methods)
     
     # 4. Perform EBCI to matrix approx -------------------------------------------------------------------------------------
     print('Part 4: ')

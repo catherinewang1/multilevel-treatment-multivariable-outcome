@@ -594,21 +594,36 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
 #' Helper function for: sim_EBCI_celllevel
 #' 4 get the average pvals (inverted from ebci) 
 #' @param shrinkage_results_df (dataframe) result of  shrink_matrix(...)$ebci_res a dataframe w shrinkage results
+#' shouldhave columns 'shrunk_value', 'se', 'w_eb' for calculation of inverted ebci pval
 #' @param ebci_obj (ebci_object) that has the parameter estimates (mu2, kappa)
 h4_1_ebci_pvals <- function(shrinkage_results_df, ebci_obj) {
-  cur_mu2   = ebci_obj$mu2['estimate']
-  cur_kappa = ebci_obj$kappa['estimate']
-  
   average_pvals = rep(NA, times = nrow(shrinkage_results_df))
+
+  cur_mu2   = tryCatch(expr = {ebci_obj$mu2['estimate']},
+                       error = function(e) {NA})
+  cur_kappa = tryCatch(expr = {ebci_obj$kappa['estimate']},
+                       error = function(e) {NA})
+  if(!is.numeric(cur_mu2) | !is.numeric(cur_kappa)) {return(average_pvals)} # if ebci est bad, don't calc
+  
   for(i in 1:nrow(shrinkage_results_df)) {
-    average_pvals[i] = 
-      get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
+
+    average_pvals[i] = tryCatch(expr = {get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
                              sigma           = shrinkage_results_df[i, 'se'], 
                              web             = shrinkage_results_df[i, 'w_eb'] , 
                              mu2             = cur_mu2, 
                              kappa           = cur_kappa,
                              alpha_threshold = .001, 
-                             maxiter         = 10) 
+                             maxiter         = 10) },
+                             error = function(e) {NA}
+                    )
+    # average_pvals[i] = 
+    #   get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
+    #                          sigma           = shrinkage_results_df[i, 'se'], 
+    #                          web             = shrinkage_results_df[i, 'w_eb'] , 
+    #                          mu2             = cur_mu2, 
+    #                          kappa           = cur_kappa,
+    #                          alpha_threshold = .001, 
+    #                          maxiter         = 10) 
   }
   return(average_pvals)
 }
@@ -779,55 +794,181 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
     #   facet_grid(rows = vars(sim_distn), scales = 'free_y') +
     #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
 
-    p_mse = ggplot(plot_df |> 
-       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
-       group_by(sim_distn, split_type, method, rank) |> 
-       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
-       arrange(sim_distn, split_type, method, rank) |> 
-       mutate(methodrank = factor(paste0(method, rank), 
-                              levels = c("unshrunkallcellsNA",
-                                         "unshrunkNA", 
-                                         "matcomp_linearregNA", 
-                                         paste0("matcomp_softImpute", ranks), 
-                                         paste0("matdecomp_svd", ranks),
-                                         paste0("matdecomp_sparsesvd", ranks), 
-                                         paste0("spectralbiclust", ranks), 
-                                         paste0("spectralbiclust_threshold", ranks), 
-                                         "zerosNA", 
-                                         "averageNA"))), 
-      aes(x = methodrank, y = mse)) +
-      geom_col(color = 'black', fill = 'gray') +
-      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
-      labs(title = 'MSE', x = 'method + rank', y = 'mse') +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+    # p_mse = ggplot(plot_df |> 
+    #    filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+    #    group_by(sim_distn, split_type, method, rank) |> 
+    #    summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+    #    arrange(sim_distn, split_type, method, rank) |> 
+    #    mutate(methodrank = factor(paste0(method, rank), 
+    #                           levels = c("unshrunkallcellsNA",
+    #                                      "unshrunkNA", 
+    #                                      "matcomp_linearregNA", 
+    #                                      paste0("matcomp_softImpute", ranks), 
+    #                                      paste0("matdecomp_svd", ranks),
+    #                                      paste0("matdecomp_sparsesvd", ranks), 
+    #                                      paste0("spectralbiclust", ranks), 
+    #                                      paste0("spectralbiclust_threshold", ranks), 
+    #                                      "zerosNA", 
+    #                                      "averageNA"))), 
+    #   aes(x = methodrank, y = mse)) +
+    #   geom_col(color = 'black', fill = 'gray') +
+    #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+    #   labs(title = 'MSE', x = 'method + rank', y = 'mse') +
+    #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
     
-    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
+    # ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 6, height = 6) 
 
-    p_mse_nonzero = ggplot(plot_df |> 
-       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly 
-       filter(true_theta != 0) |>
-       group_by(sim_distn, split_type, method, rank) |> 
-       summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
-       arrange(sim_distn, split_type, method, rank) |> 
-       mutate(methodrank = factor(paste0(method, rank), 
-                              levels = c("unshrunkallcellsNA",
-                                         "unshrunkNA", 
-                                         "matcomp_linearregNA", 
-                                         paste0("matcomp_softImpute", ranks), 
-                                         paste0("matdecomp_svd", ranks),
-                                         paste0("matdecomp_sparsesvd", ranks), 
-                                         paste0("spectralbiclust", ranks), 
-                                         paste0("spectralbiclust_threshold", ranks), 
-                                         "zerosNA", 
-                                         "averageNA"))), 
-      aes(x = methodrank, y = mse)) +
-      geom_col(color = 'black', fill = 'gray') +
-      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
-      labs(title = 'MSE', x = 'method + rank', y = 'mse') +
-      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+    # p_mse_nonzero = ggplot(plot_df |> 
+    #    filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly 
+    #    filter(true_theta != 0) |>
+    #    group_by(sim_distn, split_type, method, rank) |> 
+    #    summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+    #    arrange(sim_distn, split_type, method, rank) |> 
+    #    mutate(methodrank = factor(paste0(method, rank), 
+    #                           levels = c("unshrunkallcellsNA",
+    #                                      "unshrunkNA", 
+    #                                      "matcomp_linearregNA", 
+    #                                      paste0("matcomp_softImpute", ranks), 
+    #                                      paste0("matdecomp_svd", ranks),
+    #                                      paste0("matdecomp_sparsesvd", ranks), 
+    #                                      paste0("spectralbiclust", ranks), 
+    #                                      paste0("spectralbiclust_threshold", ranks), 
+    #                                      "zerosNA", 
+    #                                      "averageNA"))), 
+    #   aes(x = methodrank, y = mse)) +
+    #   geom_col(color = 'black', fill = 'gray') +
+    #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+    #   labs(title = 'MSE', x = 'method + rank', y = 'mse') +
+    #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
     
-    ggsave(filename = sprintf('%s/shrinkage_mse_nonzero.pdf', save_folder), plot = p_mse_nonzero, width = 6, height = 6) 
-    return(p_mse)
+    # ggsave(filename = sprintf('%s/shrinkage_mse_nonzero.pdf', save_folder), plot = p_mse_nonzero, width = 6, height = 6) 
+    # return(p_mse)
+
+
+
+
+
+    # === prep nice labels and colors ===
+
+
+    # === colors
+    distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+   
+    # distinct_colors[c(2, 4, 6, 7, 12, 14)]
+    methodrank_colors =  
+      c(colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[1:2+1], # (original)
+        colorRampPalette(c("white", distinct_colors[4]))(length(ranks) + 1)[1:length(ranks)+1], # softImpute
+        colorRampPalette(c("white", distinct_colors[6]))(length(ranks) + 1)[1:length(ranks)+1], # SVD
+        colorRampPalette(c("white", distinct_colors[7]))(length(ranks) + 1)[1:length(ranks)+1], # Sparse SVD
+        # colorRampPalette(c("white", distinct_colors[12]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering
+        colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[1:2+1] # zeros/avg
+      )
+    # === labels
+    method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
+                         "unshrunk"="Original", 
+                         "matcomp_linearreg"="Linear Regression", 
+                         "matcomp_softImpute"="softImpute", 
+                         "matdecomp_svd"="SVD",
+                         "matdecomp_sparsesvd"="Sparse SVD", 
+                         "spectralbiclust"="Spectral Biclustering", 
+                         "spectralbiclust_threshold"="Spectral Biclustering w/ Thresholding", 
+                         "zeros"="Zeros", 
+                         "average"="Average")
+
+    rank_nicenames = paste0('(rank=', 1:100, ')')
+
+
+
+    methodrank_nicenames <- function(method_name, rank_) {
+      # method_name = 'zeros'
+      # rank_ = 2
+      # rank_ = NA
+      # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
+      # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
+
+      
+      if(is.na(rank_)) {
+        return(method_nicenames[method_name] |> unname())
+      } else {
+        return(paste0(method_nicenames[method_name], ' ', rank_nicenames[rank_]) |> unname())
+      }
+      
+    }
+
+
+    # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
+    methodrank_nicenames_order = c()
+    for(cur_method in names(method_nicenames)) {
+      for(cur_rank in c(NA, 1:10)) {
+        methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+      }
+    }
+
+    # sim_distn_nicename = c('pois'= 'Poisson', 'nb'='Negative Binomial') # could use these explicitly, or put labels when making the factor levels/labels
+    # split_type_nicename = c('nosamplesplit'='Full Dataset', 'samplesplit'='Sample Split')
+
+
+    # === MSE overall ===
+    plot_df_summ = plot_df |> 
+           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+           group_by(sim_distn, split_type, method, rank) |> 
+           summarize(mse = mean((shrunk_value - true_theta)^2)) |> mutate(methodrank = paste0(method, rank)) |>
+           mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+
+    plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+    plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+    
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
+   
+    p_mse = ggplot() +
+      geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors) +
+      labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
+      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+
+    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 8, height = 5) 
+
+    # === MSE nonzero theta ===
+    plot_df_summ = plot_df |> 
+           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+           filter(true_theta != 0) |>
+           group_by(sim_distn, split_type, method, rank) |> 
+           summarize(mse = mean((shrunk_value - true_theta)^2)) |> mutate(methodrank = paste0(method, rank)) |>
+           mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+
+    plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+    plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+    
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
+   
+    p_mse_nonzero = ggplot() +
+      geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors) +
+      labs(title = 'MSE for nonzero Theta', x = 'method + rank', y = 'mse', fill = 'Method') +
+      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+
+
+    ggsave(filename = sprintf('%s/shrinkage_mse_nonzero.pdf', save_folder), plot = p_mse_nonzero, width = 8, height = 5) 
 }
 
 
@@ -1338,6 +1479,7 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
   }
   # if specified, save the summary_df (this is reasonable, try to save this)
   if(write_summary_df) {
+    # TODO: add fishers pval
     summary_df = plot_df |> 
        # filter(method != 'matcomp_linearreg') |>
        mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
@@ -1362,7 +1504,7 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
   }
   
   # 5.2 matrix plots- if multiple reps, will only plot using the LAST repetition e.g. A/1/sim_results.rds
-  if(('matrix' %in% names(which_plots)) & which_plots$matrix) {
+  if(('matrix' %in% names(which_plots)) && which_plots$matrix) {
     # if we want to make defulat plots
     # 5.1 some plots particular for each method, uses plot_shrink_results from utils/matrix_shrinkage.r
     # print('Part 5.1: ')
@@ -1381,20 +1523,20 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
     
     
   }
-  # # plot individual matrices
-  # if(('matrix_individual' %in% names(which_plots)) & which_plots$matrix_individual) {
+  # plot individual matrices
+  if(('matrix_individual' %in% names(which_plots)) && which_plots$matrix_individual) {
 
 
-  # }
+  }
 
   # 5.3 mse
-  if(('mse' %in% names(which_plots)) & which_plots$mse) {
+  if(('mse' %in% names(which_plots)) && which_plots$mse) {
     print('mse')
     p_mse = h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
   }
   
   # miscoverage
-  if(('miscoverage' %in% names(which_plots)) & which_plots$miscoverage) {
+  if(('miscoverage' %in% names(which_plots)) && which_plots$miscoverage) {
     print('miscoverage')
     p_miscoverage = h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
   }

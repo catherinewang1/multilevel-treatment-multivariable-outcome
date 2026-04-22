@@ -257,6 +257,7 @@ t1 = Sys.time(); print(t1 - t0) #
 
 ```
 
+# create plots from save
 
 
 
@@ -270,10 +271,10 @@ t1 = Sys.time(); print(t1 - t0) #
 for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
   # load in save and create sim specific plots
   save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
-  sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+  # sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
   
   
-  make_plots_from_save(sim_results=sim_results,
+  make_plots_from_save(sim_results_filenames=sprintf('%s/sim_results.rds', save_folder),
                        save_folder=save_folder,
                        which_plots = list(matrix=TRUE, mse=TRUE, miscoverage=TRUE),
                        write_plot_df = FALSE)
@@ -282,7 +283,7 @@ for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
 
 ```
 
-# Create Plots
+# Create Plots (working)
 
 ```{r}
 
@@ -407,8 +408,8 @@ plot_df |>
          #' @returns pseudopval (numeric) \in [0,1]
          #' 
          #' 
-         calc_pseudo_pval <- function(thetashrunk, sigma, web, mu2, kappa,
-                                      threshold, maxiter) {
+         get_ebci_average_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
+                                            threshold, maxiter) {
            # params for running 
            MAX_ITER_FOR_P = 20    # limit the number of iterations
            # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
@@ -931,7 +932,7 @@ ggplot(plot_df |>
 
 ```{r}
 
-plan(multisession, workers = 8)
+# plan(multisession, workers = 8)
 
 # simulations
 
@@ -939,6 +940,13 @@ plan(multisession, workers = 8)
 ALPHA = .1 # PARAMETER
 overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_folder)
 
+make_plots_forall = FALSE
+# repetitions_forall = 20
+repetitions_forall = 3
+matapprox_methods_forall = c('matcomp_linearreg', 'matcomp_softImpute', 'matdecomp_svd', 'matdecomp_sparsesvd', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
+cell_distns_forall = c('pois', 'nb')
+parallel_forall = FALSE
+# simulations
 
 # === SETTING A === (small, easy, fast setting)
 set.seed(12345)
@@ -956,21 +964,176 @@ sim_A_results = sim_EBCI_celllevel(
   G=G,                    # number of genes
   rank=rank,              # true rank of theta matrix
   Theta=ThetaA,            # true effects ( input NULL if want to simulate)
+  cell_distns = cell_distns_forall, # cell_distns (pois/nb)
   N=500,                 # number of treated cells
   N_control=500,          # number of control cells
   pi_P=pi_P,              # propensity score for each treatment
   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
   ranks=c(1, 2, 3),       # ranks for matrix approximations
+  matapprox_methods = matapprox_methods_forall, # matrix approx methods
   save_folder=save_folder,# folder to save results and plots
-  make_plots = FALSE,
-  repetitions=16, 
-  write_plot_df=FALSE, 
-  parallel=TRUE
-  
+  make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
+  repetitions=repetitions_forall, # number of repetitions
+  write_plot_df=FALSE,            # whether to save plot_df (set to FALSE bc this large file)
+  parallel=parallel_forall        # whether to run in parallel
 )
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
-t1 = Sys.time(); print(t1 - t0) # 47 sec for 16 reps 8 workers
+t1 = Sys.time(); print(t1 - t0) # 8 sec w/o plots, 1.7 mins with plots??
+
+
+# modify for many reps
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+
+sim_results_filenames = grep(pattern = 'sim_results.rds', x = list.files(save_folder, recursive = TRUE, full.names = TRUE), value = TRUE)
+make_plots_from_save(sim_results_filenames=sim_results_filenames,
+                     save_folder=save_folder,
+                     which_plots = list(matrix=FALSE, mse=TRUE, miscoverage=FALSE),
+                     write_plot_df = FALSE, write_summary_df=FALSE)
+gc()
+
+
+cur_plot_df = read.csv(sprintf('%s/sim_results_df.csv', save_folder))
+cur_plot_df |> group_by(repetition, sim_distn, split_type, method) |> summarize(count = n()) # should be P x G each
+if(('matrix_individual' %in% names(which_plots)) & which_plots$matrix_individual) {print('yes')} # it evaluates both????
+if(('matrix_individual' %in% names(which_plots)) ) {print('yes')}
+if(('matrix_individual' %in% names(which_plots)) && which_plots$matrix_individual) {print('yes')} # need && (boolean) not & (bitwise)
+
+save_folder
+list.dirs(save_folder)
+list.files(save_folder, recursive = TRUE, full.names = TRUE)
+save_folder
+
+
+h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
+    dir.create(sprintf('%s/mat/', save_folder))
+    if(is.null(color_limits)) {
+      # set limits based on slightly expanded true Theta values
+      cur_min = min(sim_results$Theta)
+      cur_max = max(sim_results$Theta)
+      cur_middle = (cur_min + cur_max) / 2
+      scaling = 1.3
+      
+      color_limits = c(min(-1, ceiling(scaling * (cur_min - cur_middle) + cur_middle)),
+                       floor(scaling * (cur_max - cur_middle) + cur_middle))
+    }
+  
+    my_heatmap_fill_scale = scale_fill_gradient2(midpoint = 0, limits = color_limits, low = "#3A3A98" , high = "#832424", 
+                                                 breaks = c(color_limits[1], 0, color_limits[2]), 
+                                                 labels = c(paste0('<', color_limits[1]), 0, paste0('>', color_limits[2]))) 
+    
+    #' Function to display matrix in a standard way across all these matrices
+    my_display_matrix <- function(X) {
+      display_matrix(X, color_limits[1], color_limits[2]) + my_heatmap_fill_scale + theme(axis.title = element_blank())
+    }
+    
+    
+    # save Theta
+    pl = my_display_matrix(sim_results$Theta) + labs(title = TeX(r'(True Effects $\Theta$)')) 
+    ggsave(plot = pl, filename = sprintf('%s/mat/Theta.pdf', save_folder), width = 8, height = 8)
+    ggsave(plot = pl, filename = sprintf('%s/mat/Theta.png', save_folder),
+           width = 8, height = 8, units = 'in', dpi = 300)
+    
+    
+    
+    # save initial estimates
+    for(est_method in names(sim_results$est_effects_matrices)) {
+      for(splittype in names(sim_results$est_effects_matrices[[est_method]])) {
+        pl = my_display_matrix(sim_results$est_effects_matrices[[est_method]][[splittype]]) + labs(title = paste0('Estimated Effects (', splittype, ')' ))
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.pdf', save_folder, est_method, splittype), width = 8, height = 8)
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.png', save_folder, est_method, splittype),
+           width = 8, height = 8, units = 'in', dpi = 300)
+      }
+    }
+    
+    
+  # save shrinkage targets/matrix approximations
+  for(est_method in names(sim_results$estimate_matapprox)) {
+    for(splittype in names(sim_results$estimate_matapprox[[est_method]])) { # train test all
+      for(approx_method in names(sim_results$estimate_matapprox[[est_method]][[splittype]])) {
+        approx_method_shortname = substr(approx_method, start = nchar(approx_method) - 6, stop = nchar(approx_method))
+        if(is.matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]])) {
+          pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]]) + 
+               labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', ')' ))
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname),
+                 width = 8, height = 8, units = 'in', dpi = 300)
+        } else {
+          for(r in sim_results$ranks) {
+            pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]][[r]]) + 
+                 labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', r, ')' ))
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname, r),
+                   width = 8, height = 8, units = 'in', dpi = 300)
+          }
+        }
+      }
+    }
+  }
+  
+  # save shrunk estimates
+  for(est_method in names(sim_results$shrinkage_results)) {
+    for(splittype in names(sim_results$shrinkage_results[[est_method]])) { # samplesplit or not
+      if(splittype == 'samplesplit') {
+        splittype_short =  'spl'
+      } else if(splittype == 'nosamplesplit') {
+        splittype_short =  'nospl'
+      }
+      
+      for(approx_method in names(sim_results$shrinkage_results[[est_method]][[splittype]])) {
+        approx_method_shortname = substr(approx_method, start = nchar(approx_method) - 6, stop = nchar(approx_method))
+        if(is.data.frame(sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]])) {
+          res_df = sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]]
+          res_mat = reshape2::acast(res_df |> dplyr::select(x_idx, y_idx, shrunk_value), formula = y_idx ~ x_idx) # convert from tall df to wide mat
+          
+          pl = my_display_matrix(res_mat) + 
+               labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', ')' ))
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname),
+                 width = 8, height = 8, units = 'in', dpi = 300)
+        } else {
+          for(r in sim_results$ranks) {
+            res_df = sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]]
+            res_mat = reshape2::acast(res_df |> dplyr::select(x_idx, y_idx, shrunk_value), formula = y_idx ~ x_idx) # convert from tall df to wide mat
+            
+            pl = my_display_matrix(res_mat) + 
+                 labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', r, ')' ))
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname, r),
+                   width = 8, height = 8, units = 'in', dpi = 300)
+          }
+        }
+      }
+    }
+  }
+  
+}
+```
+
+create plots from save
+```{r}
+#| eval: true
+#| output: false
+#| warning: false
+#| include: false
+
+# make the matrix and mse plots for all the settings
+# for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
+for(setting_name in c('A', 'E',  'G')) {
+  # load in save and create sim specific plots
+  # setting_name = 'A'
+  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+  # sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+  
+  sim_results_filenames = grep(pattern = 'sim_results.rds', x = list.files(save_folder, recursive = TRUE, full.names = TRUE), value = TRUE)
+  make_plots_from_save(sim_results_filenames=sim_results_filenames,
+                       save_folder=save_folder,
+                       which_plots = list(matrix=TRUE, mse=TRUE, miscoverage=TRUE),
+                       write_plot_df = FALSE)
+
+}
 
 
 
@@ -978,9 +1141,446 @@ t1 = Sys.time(); print(t1 - t0) # 47 sec for 16 reps 8 workers
 
 
 
-
-
 # Trash
+
+
+
+```{r}
+
+source('../../utils/simEBCICell_utils.R') 
+
+# testing/checking get_ebci_average_pvals
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+
+plot_df = read.csv(sprintf('%s/sim_results_df.csv', save_folder)) # repetition, sim_distn, split_type, method
+ranks = sim_results$ranks
+
+sim_results$shrinkage_results$nb$samplesplit$matdecomp_svd[[2]]
+
+sim_results$allcells_results$pois
+
+
+sim_results$ebci_params$nb$samplesplit$matdecomp_svd[[2]]
+
+
+
+
+
+cur_mu2   = sim_results$ebci_params$nb$samplesplit$matdecomp_svd[[2]]$mu2['estimate']
+cur_kappa = sim_results$ebci_params$nb$samplesplit$matdecomp_svd[[2]]$kappa['estimate']
+
+shrinkage_results_df = sim_results$shrinkage_results$nb$samplesplit$matdecomp_svd[[2]]
+
+t0 = Sys.time()
+average_pvals = rep(NA, times = nrow(shrinkage_results_df))
+for(i in 1:nrow(shrinkage_results_df)) {
+  # i = 4
+  average_pval = 
+    get_ebci_average_pvals(thetashrunk = shrinkage_results_df[i, 'shrunk_value'], 
+                           sigma       = shrinkage_results_df[i, 'se'], 
+                           web         = shrinkage_results_df[i, 'w_eb'] , 
+                           mu2         = cur_mu2, 
+                           kappa       = cur_kappa,
+                           alpha_threshold = .001, 
+                           maxiter     = 10) 
+  average_pvals[i] = average_pval
+}
+
+t1 = Sys.time(); print(t1 - t0)
+average_pvals
+
+
+plot(shrinkage_results_df$shrinkage_point, average_pvals)
+
+
+t0 = Sys.time()
+h4_1_ebci_pvals(shrinkage_results_df = sim_results$shrinkage_results$nb$samplesplit$matdecomp_svd[[2]], 
+                ebci_obj = sim_results$ebci_params$nb$samplesplit$matdecomp_svd[[2]])
+t1 = Sys.time(); print(t1 - t0)
+
+
+
+shrinkage_results_df = sim_results$shrinkage_results$nb$samplesplit$matdecomp_svd[[2]]
+head(shrinkage_results_df)
+
+
+# 
+ggplot(shrinkage_results_df |> mutate(isTheta0 = (true_theta == 0)),
+       aes(x = ebci_pvals, group = isTheta0, fill = isTheta0)) +
+  geom_histogram()
+
+
+
+
+# qqplot: pvals vs unif(0,1) 
+# want the p-vals to be ~ unif(0,1) [aka on the diagonal] for theta==0, and off diagonal (beneath) for theta!=0 
+ggplot(plot_df |> mutate(isTheta0 = (true_theta == 0)),
+       aes(sample = ebci_pvals, group = isTheta0, color = isTheta0, fill = isTheta0)) +
+  geom_abline(aes(slope = 1, intercept = 0)) +
+  geom_qq(distribution = stats::qunif) +
+  
+  labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)')
+
+#' Plot qqplots of the inverted ebci p-values
+#' 
+#'
+#'
+#' @param plot_df (dataframe) that contains the columns: 
+h_plot_ebcipval <- function(plot_df, ranks, save_folder) {
+  # CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
+  # How to combine p-values for each test? eg for pert p --> gene g, there are 20 tests and 20 p-values. How do we combine? I think it is also fine to just append in these qqplots, but we can also try Fisher's method?
+  # checking if Fisher's test will preserve unif(0,1). However, we would get an inflated power for tha alternates, right? eg, bc it is acting like a meta analysis where we have 20x the sample size/experiments
+  
+  if(FALSE) {
+    df_unif = data.frame(rep = rep(1:100, each = 10),
+                         pval = runif(n = 1000, min = 0, max = 1))
+    fishers_method <- function(x) {-2 * sum(log(x, base = exp(1)))}
+    fishers_pval <- function(s) {1 - pchisq(s, df = 2*10)} #df k = 10????
+    df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)) |> pull(fishers_pval) |> hist()
+    
+    
+    ggplot(df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)), 
+           aes(sample = fishers_pval)) + 
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif)
+  }
+  
+  
+  
+  isTheta0NamedFunc <- function(b) {if(b){'Null'} else {'Alt'}}
+  
+  # === QQ-Plot: One Run/Repetition
+  
+  
+  if("repetition" %in% colnames(plot_df)) { 
+    chosen_rep = min(plot_df$repetition)
+    plot_df_one = plot_df |> filter(repetition == chosen_rep)
+  } else {
+    plot_df_one = plot_df
+  }
+  # qqplot: pvals vs unif(0,1) 
+  # want the p-vals to be ~ unif(0,1) [aka on the diagonal] for theta==0, and off diagonal (beneath) for theta!=0 
+  p_ebci_pvals = ggplot(plot_df_one |>
+                          mutate(isTheta0 = (true_theta == 0)) |> 
+                          mutate(methodrank = factor(paste0(method, rank), 
+                                 levels = c("unshrunkallcellsNA",
+                                           "unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks), 
+                                           paste0("spectralbiclust", ranks), 
+                                           paste0("spectralbiclust_threshold", ranks), 
+                                           "zerosNA", 
+                                           "averageNA"))) |>
+                           mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0)),
+                        aes(sample = ebci_pvals, group = methodrank, color = methodrank, fill = methodrank)) +
+                geom_abline(aes(slope = 1, intercept = 0)) +
+                geom_qq(distribution = stats::qunif) +
+                coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+                labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+                facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+                theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+  
+  ggsave(filename = sprintf('%s/ebci_pvals_one.pdf', save_folder), plot = p_ebci_pvals, width = 10, height = 5) 
+  
+  rm(plot_df_one)
+  
+  # === QQ-Plot: all repetitions, combined through Fisher's comb
+  
+  fishers_methodf <- function(x) {-2 * sum(log(x, base = exp(1)))}
+  fishers_pvalf <- function(s, k) {1 - pchisq(s, df = 2*k)}
+  
+  plot_df_fishers = plot_df |>  mutate(isTheta0 = (true_theta == 0)) |> group_by(gene, grna, sim_distn, split_type, method, rank, isTheta0) |> summarize(meanp = mean(ebci_pvals), fisher_stat = fishers_methodf(ebci_pvals), count = n())
+  plot_df_fishers$fishers_pval = mapply(FUN = fishers_pvalf, s= plot_df_fishers$fisher_stat, k = plot_df_fishers$count) 
+    
+    
+  plot_df_fishers = plot_df_fishers |> 
+                          mutate(methodrank = factor(paste0(method, rank), 
+                                 levels = c("unshrunkallcellsNA",
+                                           "unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks), 
+                                           paste0("spectralbiclust", ranks), 
+                                           paste0("spectralbiclust_threshold", ranks), 
+                                           "zerosNA", 
+                                           "averageNA"))) |>
+                         mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0))
+  # at least this fishers combined pval should tell us for nulls?
+  p_ebci_pvals = ggplot(plot_df_fishers,  aes(sample = fishers_pval, group = methodrank, color = methodrank, fill = methodrank)) +
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif) +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      labs(title = 'QQ-plot of Fisher Combined Inverted EBCI p-values vs Unif(0,1)') + 
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+  
+  
+  ggsave(filename = sprintf('%s/ebci_pvals_fishers.pdf', save_folder), plot = p_ebci_pvals, width = 10, height = 5) 
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
+                     "unshrunk"="Original", 
+                     "matcomp_linearreg"="Linear Regression", 
+                     "matcomp_softImpute"="softImpute", 
+                     "matdecomp_svd"="SVD",
+                     "matdecomp_sparsesvd"="Sparse SVD", 
+                     "spectralbiclust"="Spectral Biclustering", 
+                     "spectralbiclust_threshold"="Spectral Biclustering w/ Thresholding", 
+                     "zeros"="Zeros", 
+                     "average"="Average")
+
+rank_nicenames = paste0('(rank=', 1:100, ')')
+
+
+
+methodrank_nicenames <- function(method_name, rank_) {
+  # method_name = 'zeros'
+  # rank_ = 2
+  # rank_ = NA
+  # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
+  # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
+
+  
+  if(is.na(rank_)) {
+    return(method_nicenames[method_name] |> unname())
+  } else {
+    return(paste0(method_nicenames[method_name], ' ', rank_nicenames[rank_]) |> unname())
+  }
+  
+}
+
+
+# make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
+methodrank_nicenames_order = c()
+for(cur_method in names(method_nicenames)) {
+  for(cur_rank in c(NA, 1:10)) {
+    methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+  }
+}
+
+
+plot_df_summ = plot_df |> 
+       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(mse = mean((shrunk_value - true_theta)^2)) |> mutate(methodrank = paste0(method, rank)) |>
+       mutate(sim_distn = factor(sim_distn, levels = c('pois', 'nb'), labels = c('Poisson', 'Negative Binomial')),
+              split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+
+plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+
+original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
+
+
+library(paletteer)
+distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin") 
+distinct_colors[c(2, 4, 6, 7, 12, 14)]
+
+methodrank_colors = 
+c( colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[1:2+1], # (original)
+  colorRampPalette(c("white", distinct_colors[4]))(length(ranks) + 1)[1:length(ranks)+1], # softImpute
+  colorRampPalette(c("white", distinct_colors[6]))(length(ranks) + 1)[1:length(ranks)+1], # SVD
+  colorRampPalette(c("white", distinct_colors[7]))(length(ranks) + 1)[1:length(ranks)+1], # Sparse SVD
+  # colorRampPalette(c("white", distinct_colors[12]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering
+  colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[1:2+1] # zeros/avg
+  )
+
+
+sim_distn_nicename = c('pois'= 'Poisson', 'nb'='Negative Binomial')
+split_type_nicename = c('nosamplesplit'='Full Dataset', 'samplesplit'='Sample Split')
+
+ggplot() +
+      geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors) +
+      labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
+      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+```
+
+
+
+```{r}
+# install.packages('biclust') # Warning: package 'biclust' is not available for this version of R
+# https://search.r-project.org/CRAN/refmans/biclust/html/BCSpectral.html
+# archived, so install from tar.gz file
+# https://cran.r-project.org/src/contrib/Archive/biclust/    
+# use newest 	biclust_2.0.3.tar.gz   from 2021
+# install.packages("C:/Users/Cathe/Downloads/biclust_2.0.3.tar.gz", repos = NULL, type="source")
+
+library(biclust)
+
+# Random matrix with embedded bicluster  
+test <- matrix(rnorm(5000),100,50)
+test[11:20,11:20] <- rnorm(100,10,0.1)
+image(test)
+
+shuffled_test <- test[sample(nrow(test)), sample(ncol(test))]
+image(shuffled_test)
+
+# Without specifying the  number of row and column clusters
+res1 <- spectral(shuffled_test,normalization="irrc", numberOfEigenvalues=3, 
+                 minr=2, minc=2, withinVar=1, n_clusters = NULL, n_best = 3)
+res1
+
+order(res1@info$row_labels)
+res1@info
+
+
+
+
+row_cl = data.frame(row_idx = 1:nrow(shuffled_test), 
+                    row_cl  = res1@info$row_labels)
+col_cl = data.frame(col_idx = 1:ncol(shuffled_test), 
+                    col_cl  = res1@info$column_labels)
+
+bicluster_assignment = merge(reshape2::melt(shuffled_test, varnames = c('row_idx', 'col_idx'), value.name = 'value'), 
+                             tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
+                             by = c('row_idx', 'col_idx'))
+
+biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value))
+
+
+merge(bicluster_assignment, 
+      biclust_mean, 
+      by = c('row_cl', 'col_cl')) |> dplyr::select(row_idx, col_idx, bicl_mean)
+
+biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                dplyr::select(row_idx, col_idx, bicl_mean) |> dplyr::arrange(row_idx, col_idx), 
+                              row_idx ~ col_idx, value.var="bicl_mean")
+image(biclust_mat)
+image(biclust_mat[order(res1@info$row_labels), order(res1@info$column_labels)])
+
+image(shuffled_test[order(res1@info$row_labels), order(res1@info$column_labels)])
+
+
+# Specifying the  number of row and column clusters
+res2 <- spectral(shuffled_test,normalization="log", numberOfEigenvalues=6, 
+                 minr=2, minc=2, withinVar=1, n_clusters = 2, n_best = 3)
+res2
+image(shuffled_test[order(res2@info$row_labels), order(res2@info$column_labels)])
+    
+
+
+    
+    mat = shuffled_test
+    r = 3
+    Theta_rownames = paste0('grna', 1:nrow(mat))
+    Theta_colnames = paste0('gene', 1:ncol(mat))
+
+
+    spbicl_res = spectral(mat,
+                 # normalization = "bistochastization",
+                 # normalization = "irrc", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
+                 normalization = "log", # they recommend log even w their example matrix of negative values?
+                 numberOfEigenvalues = r, # here use ranks? or n_best?
+                 minr=2, minc=2, withinVar=2, n_clusters = NULL, 
+                 n_best = 3 # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
+                 )
+    
+    row_cl = data.frame(row_idx = row.names(mat), 
+                        row_cl  = spbicl_res@info$row_labels)
+    col_cl = data.frame(col_idx = colnames(mat), 
+                        col_cl  = spbicl_res@info$column_labels)
+
+    bicluster_assignment = merge(reshape2::melt(mat, varnames = c('row_idx', 'col_idx'), value.name = 'value'), 
+                                 tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
+                                 by = c('row_idx', 'col_idx'))
+   
+    
+    biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), bicl_sd = sd(value), count = dplyr::n())
+    nbiclusters = nrow(biclust_mean) 
+    # zero out if pval is sig dif from 0 w bonferonni correction at alpha=.05 (very rough)
+    # from normalization procedure and biclustering, each bicluster should have sd around 1, I think?
+    biclust_mean = biclust_mean |> dplyr::mutate(zstat = (bicl_mean - 0)/(bicl_sd/sqrt(count)), pval = pnorm(-abs(zstat)), zeroed = as.integer(pval > .05/nbiclusters), bicl_mean_zeroed = (1 - zeroed) * bicl_mean)
+    
+    
+
+    biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                    dplyr::select(row_idx, col_idx, bicl_mean) |> dplyr::arrange(row_idx, col_idx), 
+                                  row_idx ~ col_idx, value.var="bicl_mean")
+    row.names(biclust_mat) = Theta_rownames; colnames(biclust_mat) = Theta_colnames
+    
+    
+    
+    biclust_mat_zeroed = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                    dplyr::select(row_idx, col_idx, bicl_mean_zeroed) |> dplyr::arrange(row_idx, col_idx), 
+                                  row_idx ~ col_idx, value.var="bicl_mean_zeroed")
+    row.names(biclust_mat) = Theta_rownames; colnames(biclust_mat) = Theta_colnames
+    
+    # image(biclust_mat[order(spbicl_res@info$row_labels), order(spbicl_res@info$column_labels)])
+    # image(biclust_mat_zeroed[order(spbicl_res@info$row_labels), order(spbicl_res@info$column_labels)])
+
+    mat_approx_res[[r]] = biclust_mat
+    
+    
+    
+shuffled_test
+    
+# test h3_1_1
+    
+library(biclust)
+
+source('../../utils/simEBCICell_utils.R')
+
+# setting_name = 'E'
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder)) # first run
+
+sim_results$shrinkage_results$pois$samplesplit$zeros
+
+
+mat = sim_results$est_effects_matrices$nb$train
+
+image(sim_results$Theta)
+image(mat)
+image(shuffled_test)
+dim(mat)
+dim(shuffled_test)
+
+
+
+    
+h3_1_approximate_matrix(mat = mat,  
+                        method = 'spectralbiclust', ranks = c(1, 2, 3), Theta_rownames=paste0('grna', 1:nrow(mat)), Theta_colnames=paste0('gene', 1:ncol(mat)))
+
+
+
+setting_name = 'E'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder)) # first run
+
+mat = sim_results$est_effects_matrices$nb$train
+
+a = h3_1_approximate_matrix(mat = mat,  
+                        method = 'spectralbiclust', ranks = c(1, 2), Theta_rownames=paste0('grna', 1:nrow(mat)), Theta_colnames=paste0('gene', 1:ncol(mat)))
+```
+
 
 ```{r eval=FALSE}
 set.seed(12345)

@@ -474,8 +474,9 @@ h3_approximate_matrices <- function(est_effects_matrices, ranks, Theta_rownames,
 #' @param Theta_rownmames (vector) of characters for rowname assignments (length P=#perturbations)
 #' @param Theta_colnmames (vector) of characters for colname assignments (length G=#genes)
 #' @param ranks
+#' @param calc_ebci_pvals (boolean) calc ebci_pvals (takes a hile) or not (can just load in the saved ebci_object to calc pvals later)
 h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_matapprox, 
-                            ALPHA, Theta, Theta_rownames, Theta_colnames, ranks) {
+                            ALPHA, Theta, Theta_rownames, Theta_colnames, ranks, calc_ebci_pvals=FALSE) {
   
   # use shrink_matrix from utils/matrix_shrinkage.r
   ebci_params       = list() # estimated parameters from ebci fit
@@ -532,8 +533,10 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                                        by = 'grna'), 
                                  data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
                                  by = 'gene')
+          if(calc_ebci_pvals) {
+            cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
+          }
           
-          cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
           
           # save result
           shrinkage_results[[est_method]][[splittype]][[approx_method]] = cur_shrink_res
@@ -570,7 +573,10 @@ h4_perform_ebci <- function(est_effects_matrices, est_se_matrices, estimate_mata
                                    data.frame(x_idx = 1:length(Theta_colnames), gene = Theta_colnames),
                                    by = 'gene')
 
-            cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
+            if(calc_ebci_pvals) {
+              cur_shrink_res$ebci_pvals = h4_1_ebci_pvals(shrinkage_results_df = cur_shrink_res, ebci_obj = shrink_mat_res$ebci_obj)
+            }
+            
 
             # save result
             shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]] = cur_shrink_res
@@ -1303,7 +1309,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
                                N, N_control, pi_P, nb_size, 
                                ranks, ALPHA, 
                                matapprox_methods=NULL,
-                               save_folder=NULL, make_plots=FALSE, repetitions=1, write_plot_df=FALSE, parallel=FALSE) {
+                               save_folder=NULL, make_plots=FALSE, repetitions=1, write_plot_df=FALSE, parallel=FALSE, calc_ebci_pvals=FALSE) {
   
   #' @param repetition (numeric) or NULL: will change where the results are saved 
   #'          (e.g. if NULL, save in save_folder, 
@@ -1347,7 +1353,7 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
     h4_res = h4_perform_ebci(est_effects_matrices = est_eff_res$est_effects_matrices, 
                                         est_se_matrices      = est_eff_res$est_se_matrices, 
                                         estimate_matapprox   = estimate_matapprox, 
-                                        ALPHA=ALPHA, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, ranks=ranks)
+                                        ALPHA=ALPHA, Theta=Theta, Theta_rownames=Theta_rownames, Theta_colnames=Theta_colnames, ranks=ranks, calc_ebci_pvals=FALSE)
     shrinkage_results = h4_res$shrinkage_results
     ebci_params       = h4_res$ebci_params
     rm(h4_res)
@@ -1479,7 +1485,7 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
   }
   # if specified, save the summary_df (this is reasonable, try to save this)
   if(write_summary_df) {
-    # TODO: add fishers pval
+    
     summary_df = plot_df |> 
        # filter(method != 'matcomp_linearreg') |>
        mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
@@ -1500,6 +1506,9 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
                                          "zerosNA", 
                                          "averageNA")))
     
+    # TODO: add fishers pval if there are many repetitions
+    # calculate fishers pvals
+
     write.csv(x = summary_df, file = sprintf('%s/sim_summary_df.csv', save_folder), row.names = FALSE) # save plotting df
   }
   

@@ -33,37 +33,38 @@ overall_save_folder = '../../plots/simEBCICell/' # dir.create(shrinkage_plots_fo
 
 
 # === SETTING A === (small, easy, fast setting)
-# set.seed(12345)
-# setting_name = 'A'
-# P=5
-# G=10
-# rank=2
-# ThetaA = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
-# pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
-# save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
-# t0 = Sys.time()
-# sim_A_results = sim_EBCI_celllevel(
-#   ALPHA=ALPHA,            # alpha testing level (for CIs)
-#   P=P,                    # number of grnas/perturbations
-#   G=G,                    # number of genes
-#   rank=rank,              # true rank of theta matrix
-#   Theta=ThetaA,            # true effects ( input NULL if want to simulate)
-#   cell_distns = cell_distns_forall, # cell_distns (pois/nb)
-#   N=500,                 # number of treated cells
-#   N_control=500,          # number of control cells
-#   pi_P=pi_P,              # propensity score for each treatment
-#   nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
-#   ranks=c(1, 2, 3),       # ranks for matrix approximations
-#   matapprox_methods = matapprox_methods_forall, # matrix approx methods
-#   save_folder=save_folder,# folder to save results and plots
-#   make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
-#   repetitions=repetitions_forall, # number of repetitions
-#   write_plot_df=FALSE,            # whether to save plot_df (set to FALSE bc this large file)
-#   parallel=parallel_forall        # whether to run in parallel
-# )
-# 
-# # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
-# t1 = Sys.time(); print(t1 - t0) # 8 sec w/o plots, 1.7 mins with plots??
+set.seed(12345)
+setting_name = 'A'
+P=5
+G=10
+rank=2
+ThetaA = create_blocky_matrix(r = rank, n = P, m = G) # display_matrix(Theta)
+pi_P = runif(P, min = .3, max = .7); pi_P = pi_P / sum(pi_P) # propensity score for each treatment
+save_folder = sprintf('%s%s/', overall_save_folder, setting_name); dir.create(save_folder)
+t0 = Sys.time()
+sim_A_results = sim_EBCI_celllevel(
+  ALPHA=ALPHA,            # alpha testing level (for CIs)
+  P=P,                    # number of grnas/perturbations
+  G=G,                    # number of genes
+  rank=rank,              # true rank of theta matrix
+  Theta=ThetaA,            # true effects ( input NULL if want to simulate)
+  cell_distns = cell_distns_forall, # cell_distns (pois/nb)
+  N=500,                 # number of treated cells
+  N_control=500,          # number of control cells
+  pi_P=pi_P,              # propensity score for each treatment
+  nb_size=3,              # contributes to the overdispersion of NB (smaller = more overdispersed)
+  ranks=c(1, 2, 3),       # ranks for matrix approximations
+  matapprox_methods = matapprox_methods_forall, # matrix approx methods
+  save_folder=save_folder,# folder to save results and plots
+  make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
+  repetitions=repetitions_forall, # number of repetitions
+  write_plot_df=FALSE,            # whether to save plot_df (set to FALSE bc this large file)
+  parallel=parallel_forall,        # whether to run in parallel 
+  calc_ebci_pvals=TRUE
+)
+
+# N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
+t1 = Sys.time(); print(t1 - t0) # 8 sec w/o plots, 1.7 mins with plots??
 
 # 
 # 
@@ -179,7 +180,8 @@ sim_A_results = sim_EBCI_celllevel(
   make_plots = make_plots_forall, # whether to create plots (set to FALSE bc time)
   repetitions=repetitions_forall, # number of repetitions
   write_plot_df=FALSE,            # whether to save plot_df (set to FALSE bc this large file)
-  parallel=parallel_forall        # whether to run in parallel
+  parallel=parallel_forall,        # whether to run in parallel
+  calc_ebci_pvals=FALSE
 )
 t1 = Sys.time(); print(t1 - t0) #
 # 

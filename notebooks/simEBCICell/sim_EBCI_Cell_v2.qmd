@@ -929,7 +929,7 @@ ggplot(plot_df |>
 
 
 
-
+### Runninng many reps
 ```{r}
 
 # plan(multisession, workers = 8)
@@ -980,33 +980,264 @@ sim_A_results = sim_EBCI_celllevel(
 
 # N=500; N_control=500; nb_size=3; ranks=c(1,2,3)
 t1 = Sys.time(); print(t1 - t0) # 8 sec w/o plots, 1.7 mins with plots??
+```
+
+
+### plots from many rep saves
+```{r}
+
+source('../../utils/simEBCICell_utils.R') 
 
 
 # modify for many reps
 setting_name = 'A'
 save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
-sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+# sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
 
 sim_results_filenames = grep(pattern = 'sim_results.rds', x = list.files(save_folder, recursive = TRUE, full.names = TRUE), value = TRUE)
 make_plots_from_save(sim_results_filenames=sim_results_filenames,
                      save_folder=save_folder,
-                     which_plots = list(matrix=FALSE, mse=TRUE, miscoverage=FALSE),
+                     which_plots = list(matrix=FALSE, mse=TRUE, miscoverage=TRUE),
                      write_plot_df = FALSE, write_summary_df=FALSE)
 gc()
 
 
-cur_plot_df = read.csv(sprintf('%s/sim_results_df.csv', save_folder))
-cur_plot_df |> group_by(repetition, sim_distn, split_type, method) |> summarize(count = n()) # should be P x G each
-if(('matrix_individual' %in% names(which_plots)) & which_plots$matrix_individual) {print('yes')} # it evaluates both????
-if(('matrix_individual' %in% names(which_plots)) ) {print('yes')}
-if(('matrix_individual' %in% names(which_plots)) && which_plots$matrix_individual) {print('yes')} # need && (boolean) not & (bitwise)
+# cur_plot_df = read.csv(sprintf('%s/sim_results_df.csv', save_folder))
+# cur_plot_df |> group_by(repetition, sim_distn, split_type, method) |> summarize(count = n()) # should be P x G each
+# if(('matrix_individual' %in% names(which_plots)) & which_plots$matrix_individual) {print('yes')} # it evaluates both????
+# if(('matrix_individual' %in% names(which_plots)) ) {print('yes')}
+# if(('matrix_individual' %in% names(which_plots)) && which_plots$matrix_individual) {print('yes')} # need && (boolean) not & (bitwise)
+# 
+# save_folder
+# list.dirs(save_folder)
+# list.files(save_folder, recursive = TRUE, full.names = TRUE)
+# save_folder
 
-save_folder
-list.dirs(save_folder)
-list.files(save_folder, recursive = TRUE, full.names = TRUE)
-save_folder
+```
 
 
+create plots from save
+```{r}
+#| eval: true
+#| output: false
+#| warning: false
+#| include: false
+
+# make the matrix and mse plots for all the settings
+# for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
+for(setting_name in c('A', 'E',  'G')) {
+  # load in save and create sim specific plots
+  # setting_name = 'A'
+  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+  # sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
+  
+  sim_results_filenames = grep(pattern = 'sim_results.rds', x = list.files(save_folder, recursive = TRUE, full.names = TRUE), value = TRUE)
+  make_plots_from_save(sim_results_filenames=sim_results_filenames,
+                       save_folder=save_folder,
+                       which_plots = list(matrix=TRUE, mse=TRUE, miscoverage=TRUE),
+                       write_plot_df = FALSE)
+
+}
+
+
+
+```
+
+
+
+# Trash
+
+### pvals + fishers pvals from sim_results
+```{r}
+
+suppressPackageStartupMessages(library(future.apply))
+plan(multisession, workers = 4)  # or some other plan
+
+
+
+source('../../utils/simEBCICell_utils.R') 
+
+# testing/checking get_ebci_average_pvals
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+
+
+
+
+
+# to hopefully speed up parallelization, clear some objects
+ebci_params = sim_results$ebci_params
+shrinkage_results = sim_results$shrinkage_results
+ranks = sim_results$ranks
+rm(sim_results); gc()
+
+
+
+# sim_results$ebci_params$nb$samplesplit$zeros
+# sim_results$ebci_params$nb$samplesplit$matcomp_softImpute
+
+
+#' Using saved values from sim EBCI Cell, calculate the inverted/pseudo ebci pvals
+#' Will save a nested list (of the sam structure as ebci_params and shrinkage_results) at the
+#' location : <save_folder>/sim_result_ebci_pvals.rds
+#' 
+#' @param ebci_params (list) nested list of ebci_params (parameters estimated from ebci fit)
+#' @param shrinkage_results (list) nested list of shrinkage_results (shrinkage results dataframe)
+#' @param ranks (vector) of ranks used for matrix approximations
+#' @param save_folder (character) path to folder to save result at
+#' @example
+#' suppressPackageStartupMessages(library(future.apply))
+#' plan(multisession, workers = 8)  # or some other plan
+#' source('../../utils/simEBCICell_utils.R') 
+#' 
+#' # testing/checking get_ebci_average_pvals
+#' setting_name = 'A'
+#' save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+#' sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+#' 
+#' # to hopefully speed up parallelization, clear some objects
+#' ebci_params = sim_results$ebci_params
+#' shrinkage_results = sim_results$shrinkage_results
+#' ranks = sim_results$ranks
+#' rm(sim_results); gc()
+#' 
+#' 
+#' create_ebci_pvals_from_save(ebci_params=ebci_params, shrinkage_results=shrinkage_results, ranks=ranks, 
+#'                             save_folder=save_folder, 
+#'                             maxiter=10, alpha_threshold=.001)
+#' 
+#' 
+#' test = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
+create_ebci_pvals_from_save <- function(ebci_params, shrinkage_results, ranks, save_folder, maxiter=10, alpha_threshold=.001) {
+  
+  if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
+  
+  
+  # HELPER FUNCTION
+  
+  #' calc ebci pvals current cur_ebci_params and cur_shrinkage_results
+  #' 
+  #' (this way, the code doesn't repeat for cases w ranks vs no ranks)
+  calc_ebci_pvals_inner <- function(cur_ebci_params, cur_shrinkage_results) {
+    # sim_distn = 'nb'
+    # split_type = 'samplesplit'
+    # approx_method = 'zeros'
+    # 
+    # maxiter = 10
+    # alpha_threshold = .001
+    # 
+    # cur_ebci_params = ebci_params[[sim_distn]][[split_type]][[approx_method]]
+    # cur_ebci_params
+    # 
+    # 
+    # cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+    # cur_shrinkage_results |> arrange(gene, grna) # dataframe for each #pert * #gene
+    
+    inner_func <- function(thetashrunk, sigma, web) { # This created function will take in (thetashrunk, sigma, web)
+      # call using the previously specified stopping conditions alpha_threshold and maxiter
+      # and call using the current mu2 and kappa estimates
+      
+      tryCatch(expr = {get_ebci_pvals(thetashrunk=thetashrunk, sigma=sigma, web=web, 
+                                              mu2=cur_ebci_params$mu2['estimate'], kappa=cur_ebci_params$kappa['estimate'], 
+                                              alpha_threshold=alpha_threshold, maxiter=maxiter)
+                      }, 
+               error = function(e) {NA})
+    
+    }
+    
+    # # loop sequential
+    # ebci_pvals_ = rep(NA, times = nrow(cur_shrinkage_results))
+    # for(i in 1:100) {
+    #   ebci_pvals[i] = inner_func(thetashrunk=cur_shrinkage_results$shrunk_value[i], sigma=cur_shrinkage_results$se[i], web=cur_shrinkage_results$w_eb[i])
+    # }
+    # 
+    # 
+    # 
+    # # mapply sequential
+    # ebci_pvals_ = mapply(FUN = inner_func, 
+    #                      thetashrunk=cur_shrinkage_results$shrunk_value[1:100], 
+    #                      sigma=cur_shrinkage_results$se[1:100], 
+    #                      web=cur_shrinkage_results$w_eb[1:100])
+
+      
+    
+    # future_mapply parallel
+    ebci_pvals_ = future.apply::future_mapply(FUN = inner_func, 
+                                              thetashrunk=cur_shrinkage_results$shrunk_value, 
+                                              sigma=cur_shrinkage_results$se, 
+                                              web=cur_shrinkage_results$w_eb)
+
+    return(ebci_pvals_)
+  }
+  
+  
+  # START CALC EBCI PVAL
+  ebci_pvals = list()
+  
+  # list with the same structure as ebci_params and shrinkage_results (e.g. $nb$samplesplit$...)
+  for(sim_distn in names(ebci_params)) {
+    ebci_pvals[[sim_distn]] = list()
+    for(split_type in names(ebci_params[[sim_distn]])) {
+      ebci_pvals[[sim_distn]][[split_type]] = list()
+      for(approx_method in names(ebci_params[[sim_distn]][[split_type]])) {
+        # if there are ranks
+        if(!is.data.frame(shrinkage_results[[sim_distn]][[split_type]][[approx_method]])) { 
+          # print(approx_method)
+          ebci_pvals[[sim_distn]][[split_type]][[approx_method]] = list()
+          for(r in ranks) {
+            cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]][[r]]
+            cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]][[r]]
+            
+            ebci_pvals[[sim_distn]][[split_type]][[approx_method]][[r]] = 
+              calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+          }
+        } else { # if there are no ranks
+            cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]]
+            cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+            
+            ebci_pvals[[sim_distn]][[split_type]][[approx_method]] =
+              calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+        }
+      }
+    }
+  }
+  
+  
+  saveRDS(object = ebci_pvals, file = sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
+}
+
+
+
+
+suppressPackageStartupMessages(library(future.apply))
+plan(multisession, workers = 8)  # or some other plan
+source('../../utils/simEBCICell_utils.R') 
+#' 
+# testing/checking get_ebci_average_pvals
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+
+# to hopefully speed up parallelization, clear some objects
+ebci_params = sim_results$ebci_params
+shrinkage_results = sim_results$shrinkage_results
+ranks = sim_results$ranks
+rm(sim_results); gc()
+
+
+create_ebci_pvals_from_save(ebci_params=ebci_params, shrinkage_results=shrinkage_results, ranks=ranks, 
+                            save_folder=save_folder, 
+                            maxiter=10, alpha_threshold=.001)
+
+
+test = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
+test
+```
+
+
+### plot matrix individual
+```{r}
 h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
     dir.create(sprintf('%s/mat/', save_folder))
     if(is.null(color_limits)) {
@@ -1112,39 +1343,9 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
 }
 ```
 
-create plots from save
-```{r}
-#| eval: true
-#| output: false
-#| warning: false
-#| include: false
-
-# make the matrix and mse plots for all the settings
-# for(setting_name in c('A', 'B', 'C', 'D', 'E', 'F', 'G')) {
-for(setting_name in c('A', 'E',  'G')) {
-  # load in save and create sim specific plots
-  # setting_name = 'A'
-  save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
-  # sim_results = readRDS(sprintf('%s/sim_results.rds', save_folder))
-  
-  sim_results_filenames = grep(pattern = 'sim_results.rds', x = list.files(save_folder, recursive = TRUE, full.names = TRUE), value = TRUE)
-  make_plots_from_save(sim_results_filenames=sim_results_filenames,
-                       save_folder=save_folder,
-                       which_plots = list(matrix=TRUE, mse=TRUE, miscoverage=TRUE),
-                       write_plot_df = FALSE)
-
-}
 
 
-
-```
-
-
-
-# Trash
-
-
-
+### plot ebci pvals
 ```{r}
 
 source('../../utils/simEBCICell_utils.R') 
@@ -1163,6 +1364,7 @@ sim_results$allcells_results$pois
 
 
 sim_results$ebci_params$nb$samplesplit$matdecomp_svd[[2]]
+sim_results$ebci_params$nb$samplesplit$zeros
 
 
 
@@ -1330,8 +1532,13 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder) {
 
 
 
+```
 
 
+
+### plot mse w nice names and labels and colors
+```{r}
+# setting up nice names and labels
 
 
 
@@ -1348,15 +1555,12 @@ method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
 
 rank_nicenames = paste0('(rank=', 1:100, ')')
 
-
-
 methodrank_nicenames <- function(method_name, rank_) {
   # method_name = 'zeros'
   # rank_ = 2
   # rank_ = NA
   # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
   # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
-
   
   if(is.na(rank_)) {
     return(method_nicenames[method_name] |> unname())
@@ -1370,7 +1574,7 @@ methodrank_nicenames <- function(method_name, rank_) {
 # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
 methodrank_nicenames_order = c()
 for(cur_method in names(method_nicenames)) {
-  for(cur_rank in c(NA, 1:10)) {
+  for(cur_rank in c(NA, ranks)) {
     methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
   }
 }
@@ -1389,40 +1593,298 @@ plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_ni
 original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
 
 
-library(paletteer)
-distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin") 
-distinct_colors[c(2, 4, 6, 7, 12, 14)]
 
+distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+
+# add the corresponding colors if the level is present
+
+
+length(methodrank_nicenames_order)
+
+
+# check that these are equal lengths
+methodrank_nicenames_order_present = methodrank_nicenames_order[methodrank_nicenames_order %in% unique(plot_df_summ$methodrank)]
+length(methodrank_colors) == length(methodrank_nicenames_order_present)
 methodrank_colors = 
 c( colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[1:2+1], # (original)
   colorRampPalette(c("white", distinct_colors[4]))(length(ranks) + 1)[1:length(ranks)+1], # softImpute
   colorRampPalette(c("white", distinct_colors[6]))(length(ranks) + 1)[1:length(ranks)+1], # SVD
   colorRampPalette(c("white", distinct_colors[7]))(length(ranks) + 1)[1:length(ranks)+1], # Sparse SVD
   # colorRampPalette(c("white", distinct_colors[12]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering
+  # colorRampPalette(c("white", distinct_colors[13]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering threshold
   colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[1:2+1] # zeros/avg
   )
+
+names(methodrank_colors) = methodrank_nicenames_order_present
+
+
+
+
+
+#' Create a vector of hex code colors from white to main_color of length number_of_colors
+#' @param main_color (character) the hex code of the main color 
+#' @param number_of_colors (integer) number of colors to return
+create_colors <- function(main_color, number_of_colors) {
+  colorRampPalette(c("white", main_color))(number_of_colors + 1)[1:number_of_colors+1]
+}
+
+
+#' create a named color pallette to use for plotting using the given ranks and the given 
+#' 
+#' distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+#' distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+#' @param ranks (vector) of pos integers
+create_color_pallete_nicenames <- function(ranks) {
+  distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+  distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+
+
+  if(FALSE) { # given the methods, make the list, but we should just make the full list and keep the colors consistent
+    # one by one, create color palette based on the present method and ranks combinations
+    # Original Estimates
+    methodrank_colors = c("Original (Full Dataset)" = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[2],
+                          "Original"                = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[3])
+    if("matcomp_softImpute" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[4], number_of_colors = length(ranks)) # softImpute
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("matdecomp_svd" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[6], number_of_colors = length(ranks)) # matdecomp_svd
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("matdecomp_sparsesvd" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[7], number_of_colors = length(ranks)) # matdecomp_sparsesvd
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("spectralbiclust" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[12], number_of_colors = length(ranks)) # spectralbiclust
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("spectralbiclust_threshold" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[13], number_of_colors = length(ranks)) # spectralbiclust_threshold
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    
+    methodrank_colors = c(methodrank_colors, 
+                          "Zeros"   = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[2], # zeros/avg
+                          "Average" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[3])
+  }
+  
+  # one by one, create color pallete based on the present method and ranks combinations
+  # Original Estimates
+  methodrank_colors = c("Original (Full Dataset)" = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[2],
+                        "Original"                = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[3])
+  # softImpute
+  temp_colors = create_colors(main_color = distinct_colors[4], number_of_colors = length(ranks)) # softImpute
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # matdecomp_svd
+  temp_colors = create_colors(main_color = distinct_colors[6], number_of_colors = length(ranks)) # matdecomp_svd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_svd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # matdecomp_sparsesvd
+  temp_colors = create_colors(main_color = distinct_colors[7], number_of_colors = length(ranks)) # matdecomp_sparsesvd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_sparsesvd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # spectralbiclust
+  temp_colors = create_colors(main_color = distinct_colors[12], number_of_colors = length(ranks)) # spectralbiclust
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # spectralbiclust_threshold
+  temp_colors = create_colors(main_color = distinct_colors[13], number_of_colors = length(ranks)) # spectralbiclust_threshold
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust_threshold", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  
+  methodrank_colors = c(methodrank_colors, 
+                      "Zeros" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[2], # zeros/avg
+                    "Average" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[3])
+  methodrank_colors
+
+}
+
+
+
+# one by one, create color pallete based on the present method and ranks combinations
+# Original Estimates
+methodrank_colors = c("Original (Full Dataset)" = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[2],
+                      "Original"                = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[3])
+if("matcomp_softImpute" %in% plot_df_summ$method) {
+  temp_colors = create_colors(main_color = distinct_colors[4], number_of_colors = length(ranks)) # softImpute
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+}
+if("matdecomp_svd" %in% plot_df_summ$method) {
+  temp_colors = create_colors(main_color = distinct_colors[6], number_of_colors = length(ranks)) # matdecomp_svd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_svd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+}
+if("matdecomp_sparsesvd" %in% plot_df_summ$method) {
+  temp_colors = create_colors(main_color = distinct_colors[7], number_of_colors = length(ranks)) # matdecomp_sparsesvd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_sparsesvd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+}
+if("spectralbiclust" %in% plot_df_summ$method) {
+  temp_colors = create_colors(main_color = distinct_colors[12], number_of_colors = length(ranks)) # spectralbiclust
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+}
+if("spectralbiclust_threshold" %in% plot_df_summ$method) {
+  temp_colors = create_colors(main_color = distinct_colors[13], number_of_colors = length(ranks)) # spectralbiclust_threshold
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust_threshold", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+}
+
+methodrank_colors = c(methodrank_colors, 
+                      "Zeros"   = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[2], # zeros/avg
+                      "Average" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[3])
+
+
+methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+
+distinct(plot_df_summ |> dplyr::ungroup() |> dplyr::select(method, rank, methodrank))
 
 
 sim_distn_nicename = c('pois'= 'Poisson', 'nb'='Negative Binomial')
 split_type_nicename = c('nosamplesplit'='Full Dataset', 'samplesplit'='Sample Split')
 
+# vertical 
 ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
-      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
-      scale_fill_discrete(palette = methodrank_colors) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
       labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
       scale_y_continuous(expand = expansion(mult = c(0, .05))) +
       theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
             axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
             panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
             axis.ticks.x = element_blank())
+
+
+# horizantal version (vs vertical)
+ggplot() +
+      geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
+      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      labs(title = 'MSE', x = 'MSE', y = 'Method', fill = 'Method') +
+      scale_x_continuous(expand = expansion(mult = c(0, .05))) +
+      scale_y_discrete(limits = rev) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.minor.y  = element_blank(), 
+            panel.grid.major.y  = element_blank(),
+            panel.grid.major.x  = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.y = element_blank())
 ```
 
 
+
+
+### plot miscoverage w nice names and labels and colors
+```{r}
+
+
+source('../../utils/simEBCICell_utils.R') 
+
+# testing/checking get_ebci_average_pvals
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+
+
+plot_df = read.csv(sprintf('%s/sim_results_df.csv', save_folder)) # repetition, sim_distn, split_type, method
+ranks = sim_results$ranks
+ALPHA = sim_results$ALPHA
+
+
+# === prep nice labels and colors ===
+# === colors
+methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+# === labels
+# make the ordering for a various number of methodrank levels (even if not used): 
+# first method according to method_nicenames, then rank NA, 1, 2, ...
+methodrank_nicenames_order = c()
+for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+  for(cur_rank in c(NA, ranks)) {
+    methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+  }
+}
+    
+
+# === Miscoverage overall ===
+plot_df_summ = plot_df |> 
+       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+       mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+       group_by(sim_distn, split_type, method, rank) |> 
+       summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
+       mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+              split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+
+plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+    
+# vertical
+ggplot(plot_df_summ, aes(x = methodrank, y = miscoverage_rate, fill = methodrank)) +
+    geom_col(color = 'black') +
+    geom_hline(aes(yintercept = ALPHA), color = '#DB1A1A', linewidth = .7, alpha = .6) + 
+    scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+    facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+    labs(title = 'EBCI Miscoverage Rate', x = 'Method', y = 'Miscoverage Rate') +
+    scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.major.y = element_blank(), 
+            panel.grid.major.x = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+
+
+# horizantal
+p = ggplot(plot_df_summ, aes(y = methodrank, x = miscoverage_rate, fill = methodrank)) +
+    geom_col(color = 'black') +
+    geom_vline(aes(xintercept = ALPHA), color = '#DB1A1A', linewidth = .7, alpha = .6) + 
+    scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+    facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'fixed') +
+    labs(title = 'EBCI Miscoverage Rate', x = 'Method', y = 'Miscoverage Rate') +
+    scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    scale_y_discrete(limits = rev) +
+    theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+            panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(),
+            panel.grid.minor.x = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+
+
+
+# save the ggplot objects (to adjust later as needed)
+saveRDS(p, sprintf('%s/ggplot_miscoverage_vert.rds', save_folder))
+saveRDS(p, sprintf('%s/ggplot_miscoverage_hori.rds', save_folder))
+testP = readRDS(sprintf('%s/ggplot_miscoverage.rds', save_folder))
+testP
+```
+
+
+### Other trash
 
 ```{r}
 # install.packages('biclust') # Warning: package 'biclust' is not available for this version of R

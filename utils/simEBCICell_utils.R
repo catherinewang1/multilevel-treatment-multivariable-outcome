@@ -15,7 +15,9 @@
 
 
 require(biclust)
-
+require(dplyr)
+require(ggplot2)
+ggplot2::theme_set(theme_bw() + theme(plot.title = element_text(hjust = .5)))
 
 ########################################################
 ##  Helper FUNCTIONS (e.g. should be private functions)
@@ -613,7 +615,7 @@ h4_1_ebci_pvals <- function(shrinkage_results_df, ebci_obj) {
   
   for(i in 1:nrow(shrinkage_results_df)) {
 
-    average_pvals[i] = tryCatch(expr = {get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
+    average_pvals[i] = tryCatch(expr = {get_ebci_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
                              sigma           = shrinkage_results_df[i, 'se'], 
                              web             = shrinkage_results_df[i, 'w_eb'] , 
                              mu2             = cur_mu2, 
@@ -623,7 +625,7 @@ h4_1_ebci_pvals <- function(shrinkage_results_df, ebci_obj) {
                              error = function(e) {NA}
                     )
     # average_pvals[i] = 
-    #   get_ebci_average_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
+    #   get_ebci_pvals(thetashrunk     = shrinkage_results_df[i, 'shrunk_value'], 
     #                          sigma           = shrinkage_results_df[i, 'se'], 
     #                          web             = shrinkage_results_df[i, 'w_eb'] , 
     #                          mu2             = cur_mu2, 
@@ -782,7 +784,9 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
 #' @param ranks
 #' @param save_folder
 #' @output saves plot at sprintf('%s/shrinkage_mse.pdf', save_folder)
-h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
+h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL) {
+    if(is.null(height)){height=5} # default height=5, width=8
+    if(is.null(width) ){ width=8}
     # mse
     # p_mse = ggplot(plot_df |> 
     #          group_by(sim_distn, method, rank) |> 
@@ -858,54 +862,57 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
 
 
     # === colors
-    distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
-   
+    # distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
     # distinct_colors[c(2, 4, 6, 7, 12, 14)]
-    methodrank_colors =  
-      c(colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[1:2+1], # (original)
-        colorRampPalette(c("white", distinct_colors[4]))(length(ranks) + 1)[1:length(ranks)+1], # softImpute
-        colorRampPalette(c("white", distinct_colors[6]))(length(ranks) + 1)[1:length(ranks)+1], # SVD
-        colorRampPalette(c("white", distinct_colors[7]))(length(ranks) + 1)[1:length(ranks)+1], # Sparse SVD
-        # colorRampPalette(c("white", distinct_colors[12]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering
-        colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[1:2+1] # zeros/avg
-      )
+    # methodrank_colors =  
+    #   c(colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[1:2+1], # (original)
+    #     colorRampPalette(c("white", distinct_colors[4]))(length(ranks) + 1)[1:length(ranks)+1], # softImpute
+    #     colorRampPalette(c("white", distinct_colors[6]))(length(ranks) + 1)[1:length(ranks)+1], # SVD
+    #     colorRampPalette(c("white", distinct_colors[7]))(length(ranks) + 1)[1:length(ranks)+1], # Sparse SVD
+    #     # colorRampPalette(c("white", distinct_colors[12]))(length(ranks) + 1)[1:length(ranks)+1], # biclustering
+    #     colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[1:2+1] # zeros/avg
+    #   )
+    
+    methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+
+    
     # === labels
-    method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
-                         "unshrunk"="Original", 
-                         "matcomp_linearreg"="Linear Regression", 
-                         "matcomp_softImpute"="softImpute", 
-                         "matdecomp_svd"="SVD",
-                         "matdecomp_sparsesvd"="Sparse SVD", 
-                         "spectralbiclust"="Spectral Biclustering", 
-                         "spectralbiclust_threshold"="Spectral Biclustering w/ Thresholding", 
-                         "zeros"="Zeros", 
-                         "average"="Average")
+    # method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
+    #                      "unshrunk"="Original", 
+    #                      "matcomp_linearreg"="Linear Regression", 
+    #                      "matcomp_softImpute"="softImpute", 
+    #                      "matdecomp_svd"="SVD",
+    #                      "matdecomp_sparsesvd"="Sparse SVD", 
+    #                      "spectralbiclust"="Spectral Biclustering", 
+    #                      "spectralbiclust_threshold"="Spectral Biclustering w/ Thresholding", 
+    #                      "zeros"="Zeros", 
+    #                      "average"="Average")
 
-    rank_nicenames = paste0('(rank=', 1:100, ')')
+    # rank_nicenames = paste0('(rank=', 1:100, ')')
 
 
 
-    methodrank_nicenames <- function(method_name, rank_) {
-      # method_name = 'zeros'
-      # rank_ = 2
-      # rank_ = NA
-      # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
-      # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
+    # methodrank_nicenames <- function(method_name, rank_) {
+    #   # method_name = 'zeros'
+    #   # rank_ = 2
+    #   # rank_ = NA
+    #   # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
+    #   # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
 
       
-      if(is.na(rank_)) {
-        return(method_nicenames[method_name] |> unname())
-      } else {
-        return(paste0(method_nicenames[method_name], ' ', rank_nicenames[rank_]) |> unname())
-      }
+    #   if(is.na(rank_)) {
+    #     return(method_nicenames[method_name] |> unname())
+    #   } else {
+    #     return(paste0(method_nicenames[method_name], ' ', rank_nicenames[rank_]) |> unname())
+    #   }
       
-    }
+    # }
 
 
     # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
     methodrank_nicenames_order = c()
-    for(cur_method in names(method_nicenames)) {
-      for(cur_rank in c(NA, 1:10)) {
+    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+      for(cur_rank in c(NA, ranks)) {
         methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
       }
     }
@@ -929,12 +936,12 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
    
     p_mse = ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
-      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
-      scale_fill_discrete(palette = methodrank_colors) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
       labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
       scale_y_continuous(expand = expansion(mult = c(0, .05))) +
       theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
@@ -942,7 +949,30 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
             panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
             axis.ticks.x = element_blank())
 
-    ggsave(filename = sprintf('%s/shrinkage_mse.pdf', save_folder), plot = p_mse, width = 8, height = 5) 
+    ggsave(filename = sprintf('%s/mse_vert.pdf', save_folder), plot = p_mse, width = width, height = height) 
+    saveRDS(p_mse, sprintf('%s/ggplot_mse_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+
+    p_mse = ggplot() +
+      geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
+      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      labs(title = 'MSE', x = 'MSE', y = 'Method', fill = 'Method') +
+      scale_x_continuous(expand = expansion(mult = c(0, .05))) +
+      scale_y_discrete(limits = rev) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.minor.y  = element_blank(), 
+            panel.grid.major.y  = element_blank(),
+            panel.grid.major.x  = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.y = element_blank())
+
+    ggsave(filename = sprintf('%s/mse_hori.pdf', save_folder), plot = p_mse, width = width, height = height) 
+    saveRDS(p_mse, sprintf('%s/ggplot_mse_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
 
     # === MSE nonzero theta ===
     plot_df_summ = plot_df |> 
@@ -960,12 +990,12 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
    
     p_mse_nonzero = ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
-      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7) +                   # MSEs for 'naive'/original method
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original methods
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
-      scale_fill_discrete(palette = methodrank_colors) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
       labs(title = 'MSE for nonzero Theta', x = 'method + rank', y = 'mse', fill = 'Method') +
       scale_y_continuous(expand = expansion(mult = c(0, .05))) +
       theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
@@ -974,11 +1004,36 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder) {
             axis.ticks.x = element_blank())
 
 
-    ggsave(filename = sprintf('%s/shrinkage_mse_nonzero.pdf', save_folder), plot = p_mse_nonzero, width = 8, height = 5) 
+    ggsave(filename = sprintf('%s/mse_nonzero_vert.pdf', save_folder), plot = p_mse_nonzero, width = width, height = height) 
+    saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+
+    p_mse_nonzero = ggplot() +
+      geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
+      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      labs(title = 'MSE for nonzero Theta', x = 'MSE', y = 'Method', fill = 'Method') +
+      scale_x_continuous(expand = expansion(mult = c(0, .05))) +
+      scale_y_discrete(limits = rev) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.minor.y  = element_blank(), 
+            panel.grid.major.y  = element_blank(),
+            panel.grid.major.x  = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.y = element_blank())
+
+    ggsave(filename = sprintf('%s/mse_nonzero_hori.pdf', save_folder), plot = p_mse_nonzero, width = width, height = height) 
+    saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
 }
 
 
-h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder) {
+h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, width=NULL) {
+  if(is.null(height)){height=5} # default: height=5, width=8
+  if(is.null(width) ){ width=8}
   # CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
 
   # coverage rate
@@ -1004,33 +1059,176 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder) {
   #   labs(title = 'Average EBCI Coverage', x = 'method + rank', y = 'average coverage') +
   #   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
 
-  # miscoverage rate
-  p_miscoverage = ggplot(plot_df |> 
-         filter(method != 'matcomp_linearreg') |>
+  # === prep nice labels and colors ===
+  # === colors
+  methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+  # === labels
+  # make the ordering for a various number of methodrank levels (even if not used): 
+  # first method according to method_nicenames, then rank NA, 1, 2, ...
+  methodrank_nicenames_order = c()
+  for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    for(cur_rank in c(NA, ranks)) {
+      methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+    }
+  }
+      
+
+  # === Miscoverage overall ===
+  plot_df_summ = plot_df |> 
+         filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
          mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
          group_by(sim_distn, split_type, method, rank) |> 
          summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
-         arrange(sim_distn, split_type, method, rank) |> 
-         mutate(methodrank = factor(paste0(method, rank), 
-                                levels = c("unshrunkallcellsNA",
-                                           "unshrunkNA", 
-                                           "matcomp_linearregNA", 
-                                           paste0("matcomp_softImpute", ranks), 
-                                           paste0("matdecomp_svd", ranks),
-                                           paste0("matdecomp_sparsesvd", ranks), 
-                                           paste0("spectralbiclust", ranks), 
-                                           paste0("spectralbiclust_threshold", ranks), 
-                                           "zerosNA", 
-                                           "averageNA"))), 
-       aes(x = methodrank, y = miscoverage_rate)) +
-    geom_col(color = 'black', fill = 'gray') +
-    geom_hline(aes(yintercept = ALPHA), color = 'orange', alpha = .7) +
-    facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
-    labs(title = 'EBCI Miscoverage Rate', x = 'method + rank', y = 'miscoverage rate') +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+         mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
 
-  ggsave(filename = sprintf('%s/ebci_miscoveragerate.pdf', save_folder), plot = p_miscoverage, width = 6, height = 6) 
-  return(p_miscoverage)
+  plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+  plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+      
+  # vertical
+  p_miscoverage_vert = ggplot(plot_df_summ, aes(x = methodrank, y = miscoverage_rate, fill = methodrank)) +
+      geom_col(color = 'black') +
+      geom_hline(aes(yintercept = ALPHA), color = '#DB1A1A', linewidth = .7, alpha = .6) + 
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+      labs(title = 'EBCI Miscoverage Rate', x = 'Method', y = 'Miscoverage Rate') +
+      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.major.y = element_blank(), 
+            panel.grid.major.x = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.x = element_blank())
+
+  ggsave(filename = sprintf('%s/ebci_miscoveragerate_vert.pdf', save_folder), plot = p_miscoverage_vert, width = width, height = height) 
+  saveRDS(p_miscoverage_vert, sprintf('%s/ggplot_miscoverage_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+
+  # horizantal
+  p_miscoverage_hori = ggplot(plot_df_summ, aes(y = methodrank, x = miscoverage_rate, fill = methodrank)) +
+      geom_col(color = 'black') +
+      geom_vline(aes(xintercept = ALPHA), color = '#DB1A1A', linewidth = .7, alpha = .6) + 
+      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'fixed') +
+      labs(title = 'EBCI Miscoverage Rate', x = 'Method', y = 'Miscoverage Rate') +
+      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+      scale_y_discrete(limits = rev) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+              axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+              panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank(),
+              panel.grid.minor.x = element_blank(), 
+              strip.background = element_rect(fill = NA), 
+              axis.ticks.x = element_blank())
+
+  ggsave(filename = sprintf('%s/ebci_miscoveragerate_hori.pdf', save_folder), plot = p_miscoverage_hori, width = width, height = height)   
+  saveRDS(p_miscoverage_hori, sprintf('%s/ggplot_miscoverage_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+
+  return(NULL)
+}
+
+
+
+h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
+    dir.create(sprintf('%s/mat/', save_folder))
+    if(is.null(color_limits)) {
+      # set limits based on slightly expanded true Theta values
+      cur_min = min(sim_results$Theta)
+      cur_max = max(sim_results$Theta)
+      cur_middle = (cur_min + cur_max) / 2
+      scaling = 1.3
+      
+      color_limits = c(min(-1, ceiling(scaling * (cur_min - cur_middle) + cur_middle)),
+                       floor(scaling * (cur_max - cur_middle) + cur_middle))
+    }
+  
+    my_heatmap_fill_scale = scale_fill_gradient2(midpoint = 0, limits = color_limits, low = "#3A3A98" , high = "#832424", 
+                                                 breaks = c(color_limits[1], 0, color_limits[2]), 
+                                                 labels = c(paste0('<', color_limits[1]), 0, paste0('>', color_limits[2]))) 
+    
+    #' Function to display matrix in a standard way across all these matrices
+    my_display_matrix <- function(X) {
+      display_matrix(X, color_limits[1], color_limits[2]) + my_heatmap_fill_scale + theme(axis.title = element_blank())
+    }
+    
+    
+    # save Theta
+    pl = my_display_matrix(sim_results$Theta) + labs(title = TeX(r'(True Effects $\Theta$)')) 
+    ggsave(plot = pl, filename = sprintf('%s/mat/Theta.pdf', save_folder), width = 8, height = 8)
+    ggsave(plot = pl, filename = sprintf('%s/mat/Theta.png', save_folder),
+           width = 8, height = 8, units = 'in', dpi = 300)
+    
+    
+    
+    # save initial estimates
+    for(est_method in names(sim_results$est_effects_matrices)) {
+      for(splittype in names(sim_results$est_effects_matrices[[est_method]])) {
+        pl = my_display_matrix(sim_results$est_effects_matrices[[est_method]][[splittype]]) + labs(title = paste0('Estimated Effects (', splittype, ')' ))
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.pdf', save_folder, est_method, splittype), width = 8, height = 8)
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.png', save_folder, est_method, splittype),
+           width = 8, height = 8, units = 'in', dpi = 300)
+      }
+    }
+    
+    
+  # save shrinkage targets/matrix approximations
+  for(est_method in names(sim_results$estimate_matapprox)) {
+    for(splittype in names(sim_results$estimate_matapprox[[est_method]])) { # train test all
+      for(approx_method in names(sim_results$estimate_matapprox[[est_method]][[splittype]])) {
+        approx_method_shortname = substr(approx_method, start = nchar(approx_method) - 6, stop = nchar(approx_method))
+        if(is.matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]])) {
+          pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]]) + 
+               labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', ')' ))
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname),
+                 width = 8, height = 8, units = 'in', dpi = 300)
+        } else {
+          for(r in sim_results$ranks) {
+            pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]][[r]]) + 
+                 labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', r, ')' ))
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname, r),
+                   width = 8, height = 8, units = 'in', dpi = 300)
+          }
+        }
+      }
+    }
+  }
+  
+  # save shrunk estimates
+  for(est_method in names(sim_results$shrinkage_results)) {
+    for(splittype in names(sim_results$shrinkage_results[[est_method]])) { # samplesplit or not
+      if(splittype == 'samplesplit') {
+        splittype_short =  'spl'
+      } else if(splittype == 'nosamplesplit') {
+        splittype_short =  'nospl'
+      }
+      
+      for(approx_method in names(sim_results$shrinkage_results[[est_method]][[splittype]])) {
+        approx_method_shortname = substr(approx_method, start = nchar(approx_method) - 6, stop = nchar(approx_method))
+        if(is.data.frame(sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]])) {
+          res_df = sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]]
+          res_mat = reshape2::acast(res_df |> dplyr::select(x_idx, y_idx, shrunk_value), formula = y_idx ~ x_idx) # convert from tall df to wide mat
+          
+          pl = my_display_matrix(res_mat) + 
+               labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', ')' ))
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname),
+                 width = 8, height = 8, units = 'in', dpi = 300)
+        } else {
+          for(r in sim_results$ranks) {
+            res_df = sim_results$shrinkage_results[[est_method]][[splittype]][[approx_method]][[r]]
+            res_mat = reshape2::acast(res_df |> dplyr::select(x_idx, y_idx, shrunk_value), formula = y_idx ~ x_idx) # convert from tall df to wide mat
+            
+            pl = my_display_matrix(res_mat) + 
+                 labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', r, ')' ))
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname, r),
+                   width = 8, height = 8, units = 'in', dpi = 300)
+          }
+        }
+      }
+    }
+  }
+  
 }
 
 ########################################################
@@ -1458,8 +1656,15 @@ sim_EBCI_celllevel <- function(P, G, rank, Theta, cell_distns,
 #' #@param create_default_plots (boolean) whether or not to create default plots that could have
 #' #       been made during sim_EBCI_celllevel call (e.g. if sim_EBCI_celllevel(... make_plots=FALSE), then
 #' #       the default plots were not made. Set this function's create_default_plots=TRUE to make these.)
+#' @param plot_specs (list) of plot specifications when saving such as the size
+#'          $mse $height=5
+#'               $width=8    
+#'          $miscoverage 
+#'               $height=5
+#'               $width=8            
+#' @param use_saved_summary_df (boolean) whether to load in saved summary_df  (unimplemented.... maybe shouldn't)
 #' @output 
-make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots, write_plot_df=FALSE, write_summary_df=FALSE, return_plot_df=FALSE) {
+make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots, write_plot_df=FALSE, write_summary_df=FALSE, return_plot_df=FALSE, use_saved_summary_df=FALSE, plot_specs=NULL) {
 
   if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
   
@@ -1478,7 +1683,8 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
       plot_df = rbind(plot_df, plot_df_); rm(plot_df_)
     }
   }
-  
+  ranks = sim_results$ranks 
+
   # if specified, save the plot_df (this is very large)
   if(write_plot_df) {
     write.csv(x = plot_df, file = sprintf('%s/sim_results_df.csv', save_folder), row.names = FALSE) # save plotting df
@@ -1534,20 +1740,25 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
   }
   # plot individual matrices
   if(('matrix_individual' %in% names(which_plots)) && which_plots$matrix_individual) {
-
-
+    if(length(sim_results_filenames) == 1) { # --- 1 repetition
+      sim_results = readRDS(sim_results_filenames)
+    } else {                                 # --- many repetitions
+      sim_results = readRDS(sim_results_filenames[1])      
+    }
+    h5_2_2_plot_matrix_individual(sim_results=sim_results, color_limits=NULL)
+    rm(sim_results)
   }
 
   # 5.3 mse
   if(('mse' %in% names(which_plots)) && which_plots$mse) {
     print('mse')
-    p_mse = h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder) 
+    p_mse = h5_3_plots_mse(plot_df=plot_df, ranks=sim_results$ranks, save_folder=save_folder, height=plot_specs$mse$height, width=plot_specs$mse$width) 
   }
   
   # miscoverage
   if(('miscoverage' %in% names(which_plots)) && which_plots$miscoverage) {
     print('miscoverage')
-    p_miscoverage = h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder) 
+    p_miscoverage = h_plot_miscoverage(plot_df=plot_df, ranks=sim_results$ranks, ALPHA = sim_results$ALPHA, save_folder=save_folder, height=plot_specs$mse$height, width=plot_specs$mse$width) 
   }
   
   
@@ -2001,7 +2212,9 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
 # }
 
 
-
+# =================================
+# === EBCI PVAL FUNCTIONS ===
+# =================================
 
 #' description: Create the pseudo p-value: Find the smallest alpha that does not cover 0 OR the largest alpha that still covers 0
 #'  The CI is shrunk estimate +- cva * w_eb * sigma
@@ -2020,8 +2233,8 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
 #' @returns pseudopval (numeric) \in [0,1]
 #' 
 #' 
-get_ebci_average_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
-                                  alpha_threshold, maxiter) {
+get_ebci_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
+                                   alpha_threshold, maxiter) {
   # # params for running 
   # MAX_ITER_FOR_P = 20    # limit the number of iterations
   # # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
@@ -2072,4 +2285,269 @@ get_ebci_average_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
   }
 
   return(cur_alpha)
+}
+
+
+
+
+
+
+#' Using saved values from sim EBCI Cell, calculate the inverted/pseudo ebci pvals
+#' Will save a nested list (of the sam structure as ebci_params and shrinkage_results) at the
+#' location : <save_folder>/sim_result_ebci_pvals.rds
+#' 
+#' @param ebci_params (list) nested list of ebci_params (parameters estimated from ebci fit)
+#' @param shrinkage_results (list) nested list of shrinkage_results (shrinkage results dataframe)
+#' @param ranks (vector) of ranks used for matrix approximations
+#' @param save_folder (character) path to folder to save result at
+#' @example
+#' suppressPackageStartupMessages(library(future.apply))
+#' plan(multisession, workers = 8)  # or some other plan
+#' source('../../utils/simEBCICell_utils.R') 
+#' 
+#' # testing/checking get_ebci_pvals
+#' setting_name = 'A'
+#' save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+#' sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+#' 
+#' # to hopefully speed up parallelization, clear some objects
+#' ebci_params = sim_results$ebci_params
+#' shrinkage_results = sim_results$shrinkage_results
+#' ranks = sim_results$ranks
+#' rm(sim_results); gc()
+#' 
+#' 
+#' create_ebci_pvals_from_save(ebci_params=ebci_params, shrinkage_results=shrinkage_results, ranks=ranks, 
+#'                             save_folder=save_folder, 
+#'                             maxiter=10, alpha_threshold=.001)
+#' 
+#' 
+#' test = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
+create_ebci_pvals_from_save <- function(ebci_params, shrinkage_results, ranks, save_folder, maxiter=10, alpha_threshold=.001) {
+  
+  if(is.null(save_folder) || !dir.exists(save_folder)) {return('bad save_folder input')}
+  
+  
+  # HELPER FUNCTION
+  
+  #' calc ebci pvals current cur_ebci_params and cur_shrinkage_results
+  #' 
+  #' (this way, the code doesn't repeat for cases w ranks vs no ranks)
+  calc_ebci_pvals_inner <- function(cur_ebci_params, cur_shrinkage_results) {
+    # sim_distn = 'nb'
+    # split_type = 'samplesplit'
+    # approx_method = 'zeros'
+    # 
+    # maxiter = 10
+    # alpha_threshold = .001
+    # 
+    # cur_ebci_params = ebci_params[[sim_distn]][[split_type]][[approx_method]]
+    # cur_ebci_params
+    # 
+    # 
+    # cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+    # cur_shrinkage_results |> arrange(gene, grna) # dataframe for each #pert * #gene
+    
+    inner_func <- function(thetashrunk, sigma, web) { # This created function will take in (thetashrunk, sigma, web)
+      # call using the previously specified stopping conditions alpha_threshold and maxiter
+      # and call using the current mu2 and kappa estimates
+      
+      tryCatch(expr = {get_ebci_pvals(thetashrunk=thetashrunk, sigma=sigma, web=web, 
+                                              mu2=cur_ebci_params$mu2['estimate'], kappa=cur_ebci_params$kappa['estimate'], 
+                                              alpha_threshold=alpha_threshold, maxiter=maxiter)
+                      }, 
+               error = function(e) {NA})
+    
+    }
+    
+    # # loop sequential
+    # ebci_pvals_ = rep(NA, times = nrow(cur_shrinkage_results))
+    # for(i in 1:100) {
+    #   ebci_pvals[i] = inner_func(thetashrunk=cur_shrinkage_results$shrunk_value[i], sigma=cur_shrinkage_results$se[i], web=cur_shrinkage_results$w_eb[i])
+    # }
+    # 
+    # 
+    # 
+    # # mapply sequential
+    # ebci_pvals_ = mapply(FUN = inner_func, 
+    #                      thetashrunk=cur_shrinkage_results$shrunk_value[1:100], 
+    #                      sigma=cur_shrinkage_results$se[1:100], 
+    #                      web=cur_shrinkage_results$w_eb[1:100])
+
+      
+    
+    # future_mapply parallel
+    ebci_pvals_ = future.apply::future_mapply(FUN = inner_func, 
+                                              thetashrunk=cur_shrinkage_results$shrunk_value, 
+                                              sigma=cur_shrinkage_results$se, 
+                                              web=cur_shrinkage_results$w_eb)
+
+    return(ebci_pvals_)
+  }
+  
+  
+  # START CALC EBCI PVAL
+  ebci_pvals = list()
+  
+  # list with the same structure as ebci_params and shrinkage_results (e.g. $nb$samplesplit$...)
+  for(sim_distn in names(ebci_params)) {
+    ebci_pvals[[sim_distn]] = list()
+    for(split_type in names(ebci_params[[sim_distn]])) {
+      ebci_pvals[[sim_distn]][[split_type]] = list()
+      for(approx_method in names(ebci_params[[sim_distn]][[split_type]])) {
+        # if there are ranks
+        if(!is.data.frame(shrinkage_results[[sim_distn]][[split_type]][[approx_method]])) { 
+          # print(approx_method)
+          ebci_pvals[[sim_distn]][[split_type]][[approx_method]] = list()
+          for(r in ranks) {
+            cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]][[r]]
+            cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]][[r]]
+            
+            ebci_pvals[[sim_distn]][[split_type]][[approx_method]][[r]] = 
+              calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+          }
+        } else { # if there are no ranks
+            cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]]
+            cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+            
+            ebci_pvals[[sim_distn]][[split_type]][[approx_method]] =
+              calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+        }
+      }
+    }
+  }
+  
+  
+  saveRDS(object = ebci_pvals, file = sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
+}
+
+
+
+
+
+# =================================
+# === PLOTTING HELPER FUNCTIONS ===
+# =================================
+
+
+method_nicenames = c("unshrunkallcells"="Original (Full Dataset)",
+                     "unshrunk"="Original", 
+                     "matcomp_linearreg"="Linear Regression", 
+                     "matcomp_softImpute"="softImpute", 
+                     "matdecomp_svd"="SVD",
+                     "matdecomp_sparsesvd"="Sparse SVD", 
+                     "spectralbiclust"="Spectral Biclustering", 
+                     "spectralbiclust_threshold"="Spectral Biclustering w/ Thresholding", 
+                     "zeros"="Zeros", 
+                     "average"="Average")
+
+rank_nicenames = paste0('(rank=', 1:100, ')')
+
+methodrank_nicenames <- function(method_name, rank_) {
+  # method_name = 'zeros'
+  # rank_ = 2
+  # rank_ = NA
+  # methodrank_nicenames(method_name = plot_df_summ$method[1], rank_ = plot_df_summ$rank[1]) |> unname()
+  # mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method[1:4], rank_ = plot_df_summ$rank[1:4]) |> unname()
+  
+  if(is.na(rank_)) {
+    return(method_nicenames[method_name] |> unname())
+  } else {
+    return(paste0(method_nicenames[method_name], ' ', rank_nicenames[rank_]) |> unname())
+  }
+  
+}
+
+
+
+
+#' Create a vector of hex code colors from white to main_color of length number_of_colors
+#' @param main_color (character) the hex code of the main color 
+#' @param number_of_colors (integer) number of colors to return
+create_colors <- function(main_color, number_of_colors) {
+  colorRampPalette(c("white", main_color))(number_of_colors + 1)[1:number_of_colors+1]
+}
+
+
+#' create a named color pallette to use for plotting using the given ranks and the given 
+#' 
+#' distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+#' distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+#' @param ranks (vector) of pos integers
+create_color_pallete_nicenames <- function(ranks) {
+  distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
+  distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+
+
+  if(FALSE) { # given the methods, make the list, but we should just make the full list and keep the colors consistent
+    # one by one, create color palette based on the present method and ranks combinations
+    # Original Estimates
+    methodrank_colors = c("Original (Full Dataset)" = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[2],
+                          "Original"                = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[3])
+    if("matcomp_softImpute" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[4], number_of_colors = length(ranks)) # softImpute
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("matdecomp_svd" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[6], number_of_colors = length(ranks)) # matdecomp_svd
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("matdecomp_sparsesvd" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[7], number_of_colors = length(ranks)) # matdecomp_sparsesvd
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("spectralbiclust" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[12], number_of_colors = length(ranks)) # spectralbiclust
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    if("spectralbiclust_threshold" %in% plot_df_summ$method) {
+      temp_colors = create_colors(main_color = distinct_colors[13], number_of_colors = length(ranks)) # spectralbiclust_threshold
+      names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+      methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+    }
+    
+    methodrank_colors = c(methodrank_colors, 
+                          "Zeros"   = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[2], # zeros/avg
+                          "Average" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[3])
+  }
+  
+  # one by one, create color pallete based on the present method and ranks combinations
+  # Original Estimates
+  methodrank_colors = c("Original (Full Dataset)" = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[2],
+                        "Original"                = colorRampPalette(c("white", distinct_colors[2]))(2 + 1)[3])
+  # softImpute
+  temp_colors = create_colors(main_color = distinct_colors[4], number_of_colors = length(ranks)) # softImpute
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matcomp_softImpute", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # matdecomp_svd
+  temp_colors = create_colors(main_color = distinct_colors[6], number_of_colors = length(ranks)) # matdecomp_svd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_svd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # matdecomp_sparsesvd
+  temp_colors = create_colors(main_color = distinct_colors[7], number_of_colors = length(ranks)) # matdecomp_sparsesvd
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "matdecomp_sparsesvd", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # spectralbiclust
+  temp_colors = create_colors(main_color = distinct_colors[12], number_of_colors = length(ranks)) # spectralbiclust
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  # spectralbiclust_threshold
+  temp_colors = create_colors(main_color = distinct_colors[13], number_of_colors = length(ranks)) # spectralbiclust_threshold
+  names(temp_colors) = mapply(FUN = methodrank_nicenames, method_name =  "spectralbiclust_threshold", rank_ = ranks) |> unname()
+  methodrank_colors = c(methodrank_colors, temp_colors) ; rm(temp_colors)
+  
+  
+  methodrank_colors = c(methodrank_colors, 
+                      "Zeros" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[2], # zeros/avg
+                    "Average" = colorRampPalette(c("white", distinct_colors[14]))(2 + 1)[3])
+  methodrank_colors
+
 }

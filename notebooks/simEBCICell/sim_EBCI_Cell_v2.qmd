@@ -1047,7 +1047,7 @@ for(setting_name in c('A', 'E',  'G')) {
 
 # Trash
 
-### pvals + fishers pvals from sim_results
+### pvals from sim_results
 ```{r}
 
 suppressPackageStartupMessages(library(future.apply))
@@ -1234,6 +1234,260 @@ create_ebci_pvals_from_save(ebci_params=ebci_params, shrinkage_results=shrinkage
 test = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', save_folder))
 test
 ```
+
+
+
+
+
+### pvals from saved sim_result_ebci_pvals.rds-  format to dataframe fishers pvals
+```{r}
+
+
+# load saved ebci pvals under the files <setting name>/<rep number>/sim_result_ebci_pvals.rds
+
+# 
+# suppressPackageStartupMessages(library(future.apply))
+# plan(multisession, workers = 4)  # or some other plan
+
+
+
+source('../../utils/simEBCICell_utils.R') 
+
+overall_save_folder = '../../plots/simEBCICell/'
+  
+# # testing/checking get_ebci_average_pvals
+# setting_name = 'A'
+# save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+# sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+# sim_result_ebci_pvals = readRDS(sprintf('%s/1/sim_result_ebci_pvals.rds', save_folder))
+# ranks = sim_results$ranks
+
+
+
+# format the pvals from nested list of matrices into a dataframe
+for(setting_name in c('A', 'E')) {
+  # list all the repetition directory names (likely just 1, ...., 20)
+  save_files_rep = list.files(path = sprintf('%s%s', overall_save_folder, setting_name) , 
+                              pattern = 'sim_result_ebci_pvals.rds', recursive=TRUE, full.names = TRUE)
+  save_folders_rep = sub(pattern = 'sim_result_ebci_pvals.rds', replacement = '', x = save_files_rep) # just the folder names
+
+  for(cur_save_folder_rep in save_folders_rep) {
+    print(sprintf('[%s] %s', Sys.time(), cur_save_folder_rep))
+  
+    # create and save ebci pvals for each of the repetitions
+    tryCatch(expr = {
+      sim_results           = readRDS(sprintf('%s/sim_results.rds', cur_save_folder_rep))
+      sim_result_ebci_pvals = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', cur_save_folder_rep))
+      
+      sim_result_ebci_pvals_df = create_ebcipvals_df(sim_results=sim_results, sim_result_ebci_pvals=sim_result_ebci_pvals)
+      
+      
+      
+      # writing this df as csv (do not, for disk space reasons)
+      # write.csv(x = sim_result_ebci_pvals_df, file = sprintf('%s/sim_result_ebci_pvals_df.csv', cur_save_folder_rep))
+      # or
+      # writing this df as rds (less space? yes much less, eg for setting A,  570KB vs 92 KB)
+      saveRDS(object = sim_result_ebci_pvals_df, file = sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep))
+      
+      
+      rm(sim_results, sim_result_ebci_pvals, sim_result_ebci_pvals_df); gc(verbose = FALSE)
+    },  error = function(e) {
+      print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
+    })
+  }
+}
+
+
+
+
+
+
+for(setting_name in c('A', 'E')) {
+  # list all the repetition directory names (likely just 1, ...., 20)
+  save_files_rep = list.files(path = sprintf('%s%s', overall_save_folder, setting_name) , 
+                              pattern = 'sim_result_ebci_pvals.rds', recursive=TRUE, full.names = TRUE)
+  save_folders_rep = sub(pattern = 'sim_result_ebci_pvals.rds', replacement = '', x = save_files_rep) # just the folder names
+  df = NULL
+  # for(cur_save_folder_rep in save_folders_rep[1:5]) {
+  for(cur_save_folder_rep in save_folders_rep[1]) {
+    print(sprintf('[%s] %s', Sys.time(), cur_save_folder_rep))
+    sim_results = readRDS(sprintf('%s/sim_results.rds', cur_save_folder_rep)); ALPHA = sim_results$ALPHA; rm(sim_results) # extract ALPHA 
+    
+    # create and save ebci pvals for each of the repetitions
+    tryCatch(expr = {
+      cur_rep = gsub(pattern = "\\D", replacement = "", x = cur_save_folder_rep ) |> as.numeric() # extract the numeric vals from path
+      df = rbind(df, readRDS(sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep)) |> mutate(rep = cur_rep)) # |> rename(method = approx_method)
+    },  error = function(e) {
+      print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
+    })
+  }
+  
+  
+  cur_df_summary = create_summary_bytest_df(df = df, ALPHA = ALPHA, save_folder = sprintf('%s%s', overall_save_folder, setting_name))
+  
+  rm(df, cur_df_summary)
+  
+  
+  # dim(cur_df_summary); head(cur_df_summary)
+  # sapply(X = cur_df_summary$grna[1:5], FUN = function(x) {gsub(pattern = "\\D", replacement = "", x = x) |> as.numeric()}) # how to get the x or y idx (instead of the character gene and grna)
+  # # check the saved file
+  # test_df = readRDS(sprintf('%s%s/sim_result_ebci_summary.rds', overall_save_folder, setting_name))
+  # dim(test_df); head(test_df)
+  # ggplot(test_df |> group_by(sim_distn, split_type, method, rank) |> summarize(mse = mean(mse)) |> mutate(methodrank=paste0(method, rank)),
+  #        aes(x = methodrank, y = mse)) +
+  #   geom_col() +
+  #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y') +
+  #   theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+  #         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+  #         panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+  #         axis.ticks.x = element_blank())
+  
+}
+
+
+
+```
+
+
+```{r}
+
+
+
+# 
+# #' create a tall dataframe with the columns:
+# #'  setting specifications: sim_distn, split_type, approx_method, rank,
+# #'  shrinkage relevant values: gene, grna, unshrunk_value, shrinkage_point, se, ...,
+# #'  AND importantly for this function, add the ebci_pvals saved in a different file
+# #'  if the pvals were calculated in the initial run, there will be ebci_pvals (initial) and ebci_pvals2 (from saved)
+# #'  else just ebci_pvals (from saved)
+# #'  @param sim_results (list)
+# #'  @param sim_result_ebci_vals (list) 
+# #'  @examples
+# #'  sim_results           = readRDS(sprintf('%s/sim_results.rds',           "../../plots/simEBCICell/A/9/"))
+# #'  sim_result_ebci_pvals = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', "../../plots/simEBCICell/A/9/"))
+# #'  ebci_shrinkage_df = 
+# create_ebcipvals_df <- function(sim_results, sim_result_ebci_pvals) {
+#     # need: sim_results, sim_result_ebci_pvals, ranks
+#     # dataframe with cols: sim_distn, splittype, approx_method, rank
+#     df = NULL
+#     for(sim_distn in names(sim_result_ebci_pvals)) {
+#         for(splittype in names(sim_result_ebci_pvals[[sim_distn]])) {
+#             for(approx_method in names(sim_result_ebci_pvals[[sim_distn]][[splittype]])) {
+#                 # # how to tell if there are ranks or not 
+#                 # is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][['zeros']])         # FALSE
+#                 # is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][['matdecomp_svd']]) # TRUE
+#                 if(!is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]])) { # if there are not ranks (eg average, zeros, linearreg, ...)
+#                     df_             = sim_results$shrinkage_results[[sim_distn]][[splittype]][[approx_method]]  |> 
+#                                       dplyr::mutate(sim_distn=sim_distn, split_type=splittype, method=approx_method, rank=NA, .before=1)
+#                     if('ebci_pvals' %in% colnames(df_)) { # if already saved during the initial sim, then add as diff colname
+#                     df_$ebci_pvals2 = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]] # will have 2 cols (should be same vals though)
+#                     } else {
+#                     df_$ebci_pvals  = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]] 
+#                     df_$ebci_vals2  = NA
+#                     }
+#                 } else {                                                                               # if there are ranks (eg svd...)
+#                     df_ = NULL
+#                     for(r in sim_results$ranks) {
+#                         df_r                 = sim_results$shrinkage_results[[sim_distn]][[splittype]][[approx_method]][[r]] |> 
+#                                                dplyr::mutate(sim_distn=sim_distn, split_type=splittype, method=approx_method, rank=r, .before=1)
+#                         if('ebci_pvals' %in% colnames(df_r)) { # if already saved during the initial sim, then add as diff colname
+#                             df_r$ebci_pvals2 = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]][[r]] # will have 2 cols (should be same vals though)
+#                         } else {
+#                             df_r$ebci_pvals  = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]][[r]] 
+#                             df_r$ebci_vals2  = NA
+#                         }
+#                         
+#                         df_ = rbind(df_, df_r); rm(df_r)
+#                     }
+#                 }
+#                 
+#                 # bind together
+#                 df = rbind(df, df_); rm(df_)
+#             }
+#         }
+#     }
+#     
+#     return(df)
+# }
+
+#' create a summary df over all the repetitions
+#'
+#' will summarize: mean mse, average coverage rate, fishers pval, pval from 1 repetition
+#' result should be (#treatments x #genes) x each setting long (e.g. summarize over the repetitions)
+#' (e.g. for overall mse and miscoverage means, you need to group and summarize again)
+#' @param df (dataframe) dataframe with shrinkage results, needs to have the columns
+#' rep
+#' settings: sim_distn  split_type     approx_method rank     y_idx x_idx
+#' per test vars: gene grna unshrunk_value shrinkage_point se weight shrunk_value lower_ci upper_ci w_eb true_theta ebci_pvals
+#'
+#' @param ALPHA (numeric) alpha lvel the CIs from ebci were constructed at
+create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
+  # === Add average mse and average miscoverage rate
+  df_summary = df |>
+                 mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+                 group_by(sim_distn, split_type, method, rank, gene, grna, true_theta) |>
+                 summarize(mse = mean((shrunk_value - true_theta)^2),
+                           miscoverage_rate = 1 - mean(isTrueThetaCovered),
+                           nreps = n(),
+                           .groups = 'drop')
+
+  # === Add the "Naive" method (unshrunk glm)
+  df_unshrunk_glm = df |> filter(method == 'zeros' & is.na(rank)) |> # no shrinkage/glm, pick any (would be same)
+        mutate(method = 'unshrunk', rank = NA) |>
+        mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+               shrunk_value    = unshrunk_value,
+               lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+               upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se,
+               isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+        group_by(sim_distn, split_type, method, rank, gene, grna, true_theta) |>
+        summarize(mse = mean((shrunk_value - true_theta)^2),
+                  miscoverage_rate = 1 - mean(isTrueThetaCovered),
+                  nreps = n(),
+                  .groups = 'drop')
+
+
+
+  df_summary = rbind(df_summary, df_unshrunk_glm)
+  
+  # # === add back true_theta col... but will take more memory space (No, just group by w true_theta in prev)
+  # df_summary = merge(df_summary,
+  #                    df |> select(sim_distn,   split_type,   method,   rank,   gene,   grna, true_theta) |> distinct(), # it better be the same across?
+  #                    by =      c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'),
+  #                    all.x = TRUE) |>
+  #              relocate(true_theta, .after = 'grna')
+
+  # === add 1 ebci_pval
+  chosen_rep = min(df$rep, na.rm = TRUE) # chosen repetition to save the ebci pvals from 1 rep
+  ebci_pval_1 = df |> filter(rep == chosen_rep) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+  df_summary = merge(df_summary, ebci_pval_1, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+  # === add fishers combined ebci_pval
+  fishers_df = df |> #  mutate(isTheta0 = (true_theta == 0)) |>
+                         group_by(sim_distn, split_type, method, rank, gene, grna) |>
+                         summarize(meanp = mean(ebci_pvals),
+                                   fisher_stat = fishers_methodf(ebci_pvals),
+                                   count = n(), .groups = 'drop')
+  fishers_df$fishers_pval = mapply(FUN = fishers_pvalf, s= fishers_df$fisher_stat, k = fishers_df$count)
+
+  df_summary = merge(df_summary, fishers_df, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+
+
+
+
+  # === save in folder if specified
+  if(!is.null(save_folder) && dir.exists(save_folder)) {
+    saveRDS(df_summary, sprintf('%s/sim_result_ebci_summary.rds', save_folder))
+  }
+
+  return(df_summary)
+}
+
+
+
+ 
+```
+
+
+
 
 
 ### plot matrix individual

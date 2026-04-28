@@ -783,8 +783,9 @@ h5_0_create_plot_df <- function(shrinkage_results, allcells_results, ranks, ALPH
 #' @param plot_df
 #' @param ranks
 #' @param save_folder
+#' @param plot_df_is_summ (boolean)
 #' @output saves plot at sprintf('%s/shrinkage_mse.pdf', save_folder)
-h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL) {
+h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL, save_ggplot=FALSE, plot_df_is_summ=FALSE) {
     if(is.null(height)){height=5} # default height=5, width=8
     if(is.null(width) ){ width=8}
     # mse
@@ -922,18 +923,31 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL)
 
 
     # === MSE overall ===
-    plot_df_summ = plot_df |> 
-           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
-           group_by(sim_distn, split_type, method, rank) |> 
-           summarize(mse = mean((shrunk_value - true_theta)^2)) |> mutate(methodrank = paste0(method, rank)) |>
-           mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    if(plot_df_is_summ) {
+      plot_df_summ = plot_df |> 
+        filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+        group_by(sim_distn, split_type, method, rank) |> 
+        summarize(mse = mean(mse), .groups = 'drop') |> 
+        mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    } else {
+      plot_df_summ = plot_df |> 
+          filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+          group_by(sim_distn, split_type, method, rank) |> 
+          summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+          mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                 split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    }
+   
 
     plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
     plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
     
-    original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
-   
+    # take the mse from unshrunk on Full Dataset
+    # original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
+    original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
+    
     p_mse = ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
       geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
@@ -950,7 +964,10 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL)
             axis.ticks.x = element_blank())
 
     ggsave(filename = sprintf('%s/mse_vert.pdf', save_folder), plot = p_mse, width = width, height = height) 
-    saveRDS(p_mse, sprintf('%s/ggplot_mse_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    if(save_ggplot) {
+      saveRDS(p_mse, sprintf('%s/ggplot_mse_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    }
+    
 
     p_mse = ggplot() +
       geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
@@ -972,25 +989,43 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL)
             axis.ticks.y = element_blank())
 
     ggsave(filename = sprintf('%s/mse_hori.pdf', save_folder), plot = p_mse, width = width, height = height) 
-    saveRDS(p_mse, sprintf('%s/ggplot_mse_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    if(save_ggplot) {
+      saveRDS(p_mse, sprintf('%s/ggplot_mse_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    }
+    
 
     # === MSE nonzero theta ===
-    plot_df_summ = plot_df |> 
-           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
-           filter(true_theta != 0) |>
-           group_by(sim_distn, split_type, method, rank) |> 
-           summarize(mse = mean((shrunk_value - true_theta)^2)) |> mutate(methodrank = paste0(method, rank)) |>
-           mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    if(plot_df_is_summ) {
+      plot_df_summ = plot_df |> 
+        filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+        filter(true_theta != 0) |>
+        group_by(sim_distn, split_type, method, rank) |> 
+        summarize(mse = mean(mse), .groups = 'drop') |> 
+        mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    } else {
+      plot_df_summ = plot_df |> 
+        filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+        filter(true_theta != 0) |>
+        group_by(sim_distn, split_type, method, rank) |> 
+        summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
+        mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    }
+    
 
     plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
     plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
     
-    original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
-   
+    
+    # take the mse from unshrunk on Full Dataset
+    # original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
+    original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
+    
     p_mse_nonzero = ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
-      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original methods
+      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
@@ -1003,9 +1038,27 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL)
             panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
             axis.ticks.x = element_blank())
 
+    # p_mse_nonzero = ggplot() +
+    #   geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+    #   geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original methods
+    #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+    #              # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+    #              labeller = label_value
+    #              ) +
+    #   scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+    #   labs(title = 'MSE for nonzero Theta', x = 'method + rank', y = 'mse', fill = 'Method') +
+    #   scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    #   theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+    #         axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+    #         panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+    #         axis.ticks.x = element_blank())
+
 
     ggsave(filename = sprintf('%s/mse_nonzero_vert.pdf', save_folder), plot = p_mse_nonzero, width = width, height = height) 
-    saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    if(save_ggplot) {
+      saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    }
+    
 
     p_mse_nonzero = ggplot() +
       geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
@@ -1027,11 +1080,18 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL)
             axis.ticks.y = element_blank())
 
     ggsave(filename = sprintf('%s/mse_nonzero_hori.pdf', save_folder), plot = p_mse_nonzero, width = width, height = height) 
-    saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    if(save_ggplot) {
+      saveRDS(p_mse_nonzero, sprintf('%s/ggplot_mse_nonzero_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+    }
+    
 }
 
 
-h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, width=NULL) {
+#' 
+#' @param plot_df_is_summ (boolean) if the given plot_df is already a summary dataframe (e.g. loaded from a saved file)
+#'   FALSE: really tall dataframe
+#'   TRUE: probably loaded in from prev run of create_summary_bytest_df 
+h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, width=NULL, save_ggplot=FALSE, plot_df_is_summ=FALSE) {
   if(is.null(height)){height=5} # default: height=5, width=8
   if(is.null(width) ){ width=8}
   # CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
@@ -1074,13 +1134,23 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
       
 
   # === Miscoverage overall ===
-  plot_df_summ = plot_df |> 
-         filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
-         mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
-         group_by(sim_distn, split_type, method, rank) |> 
-         summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
-         mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  if(plot_df_is_summ) {
+    plot_df_summ = plot_df |> 
+      filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+      group_by(sim_distn, split_type, method, rank) |> 
+      summarize(miscoverage_rate = mean(miscoverage_rate), .groups = 'drop') |> 
+      mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  } else {
+    plot_df_summ = plot_df |> 
+      filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+      mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+      group_by(sim_distn, split_type, method, rank) |> 
+      summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
+      mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  }
+ 
 
   plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
   plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
@@ -1101,7 +1171,10 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
             axis.ticks.x = element_blank())
 
   ggsave(filename = sprintf('%s/ebci_miscoveragerate_vert.pdf', save_folder), plot = p_miscoverage_vert, width = width, height = height) 
-  saveRDS(p_miscoverage_vert, sprintf('%s/ggplot_miscoverage_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+  if(save_ggplot) {
+    saveRDS(p_miscoverage_vert, sprintf('%s/ggplot_miscoverage_vert.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+  }
+  
 
   # horizantal
   p_miscoverage_hori = ggplot(plot_df_summ, aes(y = methodrank, x = miscoverage_rate, fill = methodrank)) +
@@ -1119,13 +1192,26 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
               strip.background = element_rect(fill = NA), 
               axis.ticks.x = element_blank())
 
-  ggsave(filename = sprintf('%s/ebci_miscoveragerate_hori.pdf', save_folder), plot = p_miscoverage_hori, width = width, height = height)   
-  saveRDS(p_miscoverage_hori, sprintf('%s/ggplot_miscoverage_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+  ggsave(filename = sprintf('%s/ebci_miscoveragerate_hori.pdf', save_folder), plot = p_miscoverage_hori, width = width, height = height)  
+  if(save_ggplot) {
+    saveRDS(p_miscoverage_hori, sprintf('%s/ggplot_miscoverage_hori.rds', save_folder)) # save the ggplot objects (to adjust later as needed)
+  } 
+  
 
   return(NULL)
 }
 
 
+
+fishers_methodf <- function(x) {-2 * sum(log(x, base = exp(1)))}
+fishers_pvalf <- function(s, k) {1 - pchisq(s, df = 2*k)}
+
+#' 
+h_plot_ebci_pval <- function(TODO) {
+
+
+
+}
 
 h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
     dir.create(sprintf('%s/mat/', save_folder))
@@ -1146,7 +1232,14 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
     
     #' Function to display matrix in a standard way across all these matrices
     my_display_matrix <- function(X) {
-      display_matrix(X, color_limits[1], color_limits[2]) + my_heatmap_fill_scale + theme(axis.title = element_blank())
+      tryCatch(
+        expr = {
+           display_matrix(X, color_limits[1], color_limits[2]) + my_heatmap_fill_scale + theme(axis.title = element_blank())
+        },
+        error = function(e) {
+           NULL
+        })
+     
     }
     
     
@@ -1162,30 +1255,30 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
     for(est_method in names(sim_results$est_effects_matrices)) {
       for(splittype in names(sim_results$est_effects_matrices[[est_method]])) {
         pl = my_display_matrix(sim_results$est_effects_matrices[[est_method]][[splittype]]) + labs(title = paste0('Estimated Effects (', splittype, ')' ))
-        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.pdf', save_folder, est_method, splittype), width = 8, height = 8)
-        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.png', save_folder, est_method, splittype),
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype), width = 8, height = 8)
+        ggsave(plot = pl, filename = sprintf('%s/mat/esteff_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype),
            width = 8, height = 8, units = 'in', dpi = 300)
       }
     }
     
     
   # save shrinkage targets/matrix approximations
-  for(est_method in names(sim_results$estimate_matapprox)) {
+  for(est_method in names(sim_results$estimate_matapprox)) { # this should really be sim_distn... not est_method
     for(splittype in names(sim_results$estimate_matapprox[[est_method]])) { # train test all
       for(approx_method in names(sim_results$estimate_matapprox[[est_method]][[splittype]])) {
         approx_method_shortname = substr(approx_method, start = nchar(approx_method) - 6, stop = nchar(approx_method))
         if(is.matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]])) {
           pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]]) + 
                labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', ')' ))
-          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname), width = 8, height = 8)
-          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname),
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname),
                  width = 8, height = 8, units = 'in', dpi = 300)
         } else {
           for(r in sim_results$ranks) {
             pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]][[r]]) + 
                  labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', r, ')' ))
-            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.pdf', save_folder, est_method, splittype, approx_method_shortname, r), width = 8, height = 8)
-            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.png', save_folder, est_method, splittype, approx_method_shortname, r),
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r),
                    width = 8, height = 8, units = 'in', dpi = 300)
           }
         }
@@ -1210,8 +1303,8 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
           
           pl = my_display_matrix(res_mat) + 
                labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', ')' ))
-          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname), width = 8, height = 8)
-          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname),
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname),
                  width = 8, height = 8, units = 'in', dpi = 300)
         } else {
           for(r in sim_results$ranks) {
@@ -1220,8 +1313,8 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
             
             pl = my_display_matrix(res_mat) + 
                  labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', r, ')' ))
-            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.pdf', save_folder, est_method, splittype_short, approx_method_shortname, r), width = 8, height = 8)
-            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.png', save_folder, est_method, splittype_short, approx_method_shortname, r),
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r),
                    width = 8, height = 8, units = 'in', dpi = 300)
           }
         }
@@ -2551,3 +2644,139 @@ create_color_pallete_nicenames <- function(ranks) {
   methodrank_colors
 
 }
+
+
+
+
+#' create a tall dataframe with the columns:
+#'  setting specifications: sim_distn, split_type, approx_method, rank,
+#'  shrinkage relevant values: gene, grna, unshrunk_value, shrinkage_point, se, ...,
+#'  AND importantly for this function, add the ebci_pvals saved in a different file
+#'  if the pvals were calculated in the initial run, there will be ebci_pvals (initial) and ebci_pvals2 (from saved)
+#'  else just ebci_pvals (from saved)
+#'  @param sim_results (list)
+#'  @param sim_result_ebci_vals (list) 
+#'  @examples
+#'  sim_results           = readRDS(sprintf('%s/sim_results.rds',           "../../plots/simEBCICell/A/9/"))
+#'  sim_result_ebci_pvals = readRDS(sprintf('%s/sim_result_ebci_pvals.rds', "../../plots/simEBCICell/A/9/"))
+#'  ebci_shrinkage_df = 
+create_ebcipvals_df <- function(sim_results, sim_result_ebci_pvals) {
+    # need: sim_results, sim_result_ebci_pvals, ranks
+    # dataframe with cols: sim_distn, splittype, approx_method, rank
+    df = NULL
+    for(sim_distn in names(sim_result_ebci_pvals)) {
+        for(splittype in names(sim_result_ebci_pvals[[sim_distn]])) {
+            for(approx_method in names(sim_result_ebci_pvals[[sim_distn]][[splittype]])) {
+                # # how to tell if there are ranks or not 
+                # is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][['zeros']])         # FALSE
+                # is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][['matdecomp_svd']]) # TRUE
+                if(!is.list(sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]])) { # if there are not ranks (eg average, zeros, linearreg, ...)
+                    df_             = sim_results$shrinkage_results[[sim_distn]][[splittype]][[approx_method]]  |> 
+                                      dplyr::mutate(sim_distn=sim_distn, split_type=splittype, method=approx_method, rank=NA, .before=1)
+                    if('ebci_pvals' %in% colnames(df_)) { # if already saved during the initial sim, then add as diff colname
+                    df_$ebci_pvals2 = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]] # will have 2 cols (should be same vals though)
+                    } else {
+                    df_$ebci_pvals  = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]] 
+                    df_$ebci_vals2  = NA
+                    }
+                } else {                                                                               # if there are ranks (eg svd...)
+                    df_ = NULL
+                    for(r in sim_results$ranks) {
+                        df_r                 = sim_results$shrinkage_results[[sim_distn]][[splittype]][[approx_method]][[r]] |> 
+                                               dplyr::mutate(sim_distn=sim_distn, split_type=splittype, method=approx_method, rank=r, .before=1)
+                        if('ebci_pvals' %in% colnames(df_r)) { # if already saved during the initial sim, then add as diff colname
+                            df_r$ebci_pvals2 = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]][[r]] # will have 2 cols (should be same vals though)
+                        } else {
+                            df_r$ebci_pvals  = sim_result_ebci_pvals[[sim_distn]][[splittype]][[approx_method]][[r]] 
+                            df_r$ebci_vals2  = NA
+                        }
+                        
+                        df_ = rbind(df_, df_r); rm(df_r)
+                    }
+                }
+                
+                # bind together
+                df = rbind(df, df_); rm(df_)
+            }
+        }
+    }
+    
+    return(df)
+}
+
+
+
+
+
+
+#' create a summary df over all the repetitions
+#'
+#' will summarize: mean mse, average coverage rate, fishers pval, pval from 1 repetition
+#' result should be (#treatments x #genes) x each setting long (e.g. summarize over the repetitions)
+#' (e.g. for overall mse and miscoverage means, you need to group and summarize again)
+#' @param df (dataframe) dataframe with shrinkage results, needs to have the columns
+#' rep
+#' settings: sim_distn  split_type     approx_method rank     y_idx x_idx
+#' per test vars: gene grna unshrunk_value shrinkage_point se weight shrunk_value lower_ci upper_ci w_eb true_theta ebci_pvals
+#'
+#' @param ALPHA (numeric) alpha lvel the CIs from ebci were constructed at
+create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
+  # === Add average mse and average miscoverage rate
+  df_summary = df |>
+                 mutate(isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+                 group_by(sim_distn, split_type, method, rank, gene, grna, true_theta) |>
+                 summarize(mse = mean((shrunk_value - true_theta)^2),
+                           miscoverage_rate = 1 - mean(isTrueThetaCovered),
+                           nreps = n(),
+                           .groups = 'drop')
+
+  # === Add the "Naive" method (unshrunk glm)
+  df_unshrunk_glm = df |> filter(method == 'zeros' & is.na(rank)) |> # no shrinkage/glm, pick any (would be same)
+        mutate(method = 'unshrunk', rank = NA) |>
+        mutate(shrinkage_point = unshrunk_value,   # set all values to the original estimates
+               shrunk_value    = unshrunk_value,
+               lower_ci        = unshrunk_value - qnorm(1 - ALPHA/2) * se,
+               upper_ci        = unshrunk_value + qnorm(1 - ALPHA/2) * se,
+               isTrueThetaCovered = as.integer( lower_ci <= true_theta & true_theta <= upper_ci)) |>
+        group_by(sim_distn, split_type, method, rank, gene, grna, true_theta) |>
+        summarize(mse = mean((shrunk_value - true_theta)^2),
+                  miscoverage_rate = 1 - mean(isTrueThetaCovered),
+                  nreps = n(),
+                  .groups = 'drop')
+
+
+
+  df_summary = rbind(df_summary, df_unshrunk_glm)
+  
+  # # === add back true_theta col... but will take more memory space (No, just group by w true_theta in prev)
+  # df_summary = merge(df_summary,
+  #                    df |> select(sim_distn,   split_type,   method,   rank,   gene,   grna, true_theta) |> distinct(), # it better be the same across?
+  #                    by =      c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'),
+  #                    all.x = TRUE) |>
+  #              relocate(true_theta, .after = 'grna')
+
+  # === add 1 ebci_pval
+  chosen_rep = min(df$rep, na.rm = TRUE) # chosen repetition to save the ebci pvals from 1 rep
+  ebci_pval_1 = df |> filter(rep == chosen_rep) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+  df_summary = merge(df_summary, ebci_pval_1, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+  # === add fishers combined ebci_pval
+  fishers_df = df |> #  mutate(isTheta0 = (true_theta == 0)) |>
+                         group_by(sim_distn, split_type, method, rank, gene, grna) |>
+                         summarize(meanp = mean(ebci_pvals),
+                                   fisher_stat = fishers_methodf(ebci_pvals),
+                                   count = n(), .groups = 'drop')
+  fishers_df$fishers_pval = mapply(FUN = fishers_pvalf, s= fishers_df$fisher_stat, k = fishers_df$count)
+
+  df_summary = merge(df_summary, fishers_df, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+
+
+
+
+  # === save in folder if specified
+  if(!is.null(save_folder) && dir.exists(save_folder)) {
+    saveRDS(df_summary, sprintf('%s/sim_result_ebci_summary.rds', save_folder))
+  }
+
+  return(df_summary)
+}
+

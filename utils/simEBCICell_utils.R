@@ -276,7 +276,7 @@ h2_est_effects <- function(counts, grna, Theta, Theta_rownames, Theta_colnames) 
 
 #' Helper function for: sim_EBCI_celllevel
 #' Helper function for h3_approximate_matrices
-#' requires function: create_matrix_completion_softImpute from util...<somwhere? matrix_utils.r?>
+#' requires function: create_matrix_completion_softImpute from utils/matrixPrior_utils.R
 #' @param mat (matrix) matrix to take approx of
 #' @param method (character) name of the method to take approx of
 #'   one of these: 
@@ -348,9 +348,9 @@ h3_1_approximate_matrix <- function(mat, method, ranks, Theta_rownames, Theta_co
         spbicl_res = biclust::spectral(mat,
                    # normalization = "bistochastization", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
                    # normalization = "log", # they recommend log even w their example matrix of negative values?
-                   numberOfEigenvalues = 1, # here use ranks? or n_best?
+                   numberOfEigenvalues = r, # here use ranks? or n_best?
                    minr=2, minc=2, withinVar=2, n_clusters = NULL, 
-                   n_best = 1 # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
+                   n_best = min(r, 3) # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
                    )
         row_cl = data.frame(row_idx = row.names(mat), 
                             row_cl  = spbicl_res@info$row_labels)

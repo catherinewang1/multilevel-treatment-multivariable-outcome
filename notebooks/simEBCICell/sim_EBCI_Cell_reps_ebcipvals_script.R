@@ -1,6 +1,11 @@
 # script for creating and saving ebci pvals using saved objects from the simulation using EBCI at the cell level
 # saved objects from running the notebooks/simEBCICell/sim_EBCI_Cell_reps_script.R
-
+# 
+# Run in order:
+# -        sim_EBCI_Cell_reps_script.R          (actual simulation runs)
+# - (THIS) sim_EBCI_Cell_reps_ebcipval_script.R (using saved sim results, find the inverted ebcipvals)
+# -        sim_EBCI_Cell_reps_summary_df.R      (from the large saves, make a summary df)
+# -        sim_EBCI_Cell_reps_plot_script.R     (making some plots)
 
 suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 20)  # or some other plan

@@ -1679,12 +1679,13 @@ ggplot(plot_df |> mutate(isTheta0 = (true_theta == 0)),
   
   labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)')
 
-#' Plot qqplots of the inverted ebci p-values
+#' Plot qqplots of the inverted ebci p-values, plot_df is a very tall dataframe. 
+#' Instead, new version should take in dataframe for 1 repetition + dataframe of summary pvals (fisher)
 #' 
 #'
 #'
 #' @param plot_df (dataframe) that contains the columns: 
-h_plot_ebcipval <- function(plot_df, ranks, save_folder) {
+h_plot_ebcipval_tall <- function(plot_df, ranks, save_folder) {
   # CI Coverage (should be 1-alpha proportion) # Mis-coverage rate to compare with mse (lower is better)
   # How to combine p-values for each test? eg for pert p --> gene g, there are 20 tests and 20 p-values. How do we combine? I think it is also fine to just append in these qqplots, but we can also try Fisher's method?
   # checking if Fisher's test will preserve unif(0,1). However, we would get an inflated power for tha alternates, right? eg, bc it is acting like a meta analysis where we have 20x the sample size/experiments
@@ -1782,6 +1783,129 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder) {
 }
 
 
+
+#' Plot qqplots of the inverted ebci p-values, plot_df is a very tall dataframe. 
+#' Instead, new version should take in dataframe for 1 repetition + dataframe of summary pvals (fisher)
+#' 
+#'
+#'
+#' @param plot_df_one (dataframe) that contains the columns: 
+#' @param plot_df_summary (dataframe) that contains the columns: 
+#' @param ranks (vector) of integers indicating ranks used
+#' @param save_folder (character) path where plots are to be saved at
+h_plot_ebcipval <- function(plot_df_one, plot_df_summary, ranks, save_folder, height=NULL, width=NULL, save_ggplot=NULL) {
+
+
+  
+  if(FALSE) {
+    # How to combine p-values for each test? eg for pert p --> gene g, there are 20 tests and 20 p-values. How do we combine? I think it is also fine to just append in these qqplots, but we can also try Fisher's method?
+    # checking if Fisher's test will preserve unif(0,1). However, we would get an inflated power for tha alternates, right? eg, bc it is acting like a meta analysis where we have 20x the sample size/experiments
+    df_unif = data.frame(rep = rep(1:100, each = 10),
+                         pval = runif(n = 1000, min = 0, max = 1))
+    fishers_method <- function(x) {-2 * sum(log(x, base = exp(1)))}
+    fishers_pval <- function(s) {1 - pchisq(s, df = 2*10)} #df k = 10????
+    df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)) |> pull(fishers_pval) |> hist()
+    
+    
+    ggplot(df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)), 
+           aes(sample = fishers_pval)) + 
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif)
+  }
+  
+  if(is.null(height)){height=5} # default: height=5, width=8
+  if(is.null(width) ){ width=8}
+  # === prep nice labels and colors ===
+  # === colors
+  methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+  # === labels
+  # make the ordering for a various number of methodrank levels (even if not used): 
+  # first method according to method_nicenames, then rank NA, 1, 2, ...
+  methodrank_nicenames_order = c()
+  for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    for(cur_rank in c(NA, ranks)) {
+      methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+    }
+  }
+      
+  
+  isTheta0NamedFunc <- function(b) {if(b){'Null'} else {'Alt'}}
+  
+  # === QQ-Plot: One Run/Repetition
+  
+  temp_df = plot_df_one |> 
+            mutate(isTheta0 = (true_theta == 0),
+                   isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
+                   sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+  temp_df$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+  
+  
+  # qqplot: pvals vs unif(0,1) 
+  # want the p-vals to be ~ unif(0,1) [aka on the diagonal] for theta==0, and off diagonal (beneath) for theta!=0 
+  p_ebci_pvals = ggplot(plot_df_one |>
+                          mutate(isTheta0 = (true_theta == 0)) |> 
+                          mutate(methodrank = factor(paste0(method, rank), 
+                                 levels = c("unshrunkallcellsNA",
+                                           "unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks), 
+                                           paste0("spectralbiclust", ranks), 
+                                           paste0("spectralbiclust_threshold", ranks), 
+                                           "zerosNA", 
+                                           "averageNA"))) |>
+                           mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0)),
+                        aes(sample = ebci_pvals, group = methodrank, color = methodrank, fill = methodrank)) +
+                geom_abline(aes(slope = 1, intercept = 0)) +
+                geom_qq(distribution = stats::qunif) +
+                coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+                labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+                facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+                theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+  
+  ggsave(filename = sprintf('%s/ebci_pvals_one.pdf', save_folder), plot = p_ebci_pvals, width = 10, height = 5) 
+  
+  rm(temp_df)
+  
+  # === QQ-Plot: all repetitions, combined through Fisher's comb
+  
+  fishers_methodf <- function(x) {-2 * sum(log(x, base = exp(1)))}
+  fishers_pvalf <- function(s, k) {1 - pchisq(s, df = 2*k)}
+  
+  plot_df_fishers = plot_df |>  mutate(isTheta0 = (true_theta == 0)) |> group_by(gene, grna, sim_distn, split_type, method, rank, isTheta0) |> summarize(meanp = mean(ebci_pvals), fisher_stat = fishers_methodf(ebci_pvals), count = n())
+  plot_df_fishers$fishers_pval = mapply(FUN = fishers_pvalf, s= plot_df_fishers$fisher_stat, k = plot_df_fishers$count) 
+    
+    
+  plot_df_fishers = plot_df_fishers |> 
+                          mutate(methodrank = factor(paste0(method, rank), 
+                                 levels = c("unshrunkallcellsNA",
+                                           "unshrunkNA", 
+                                           "matcomp_linearregNA", 
+                                           paste0("matcomp_softImpute", ranks), 
+                                           paste0("matdecomp_svd", ranks),
+                                           paste0("matdecomp_sparsesvd", ranks), 
+                                           paste0("spectralbiclust", ranks), 
+                                           paste0("spectralbiclust_threshold", ranks), 
+                                           "zerosNA", 
+                                           "averageNA"))) |>
+                         mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0))
+  # at least this fishers combined pval should tell us for nulls?
+  p_ebci_pvals = ggplot(plot_df_fishers,  aes(sample = fishers_pval, group = methodrank, color = methodrank, fill = methodrank)) +
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif) +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      labs(title = 'QQ-plot of Fisher Combined Inverted EBCI p-values vs Unif(0,1)') + 
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
+
+  
+  
+  ggsave(filename = sprintf('%s/ebci_pvals_fishers.pdf', save_folder), plot = p_ebci_pvals, width = 10, height = 5) 
+  
+}
 
 
 

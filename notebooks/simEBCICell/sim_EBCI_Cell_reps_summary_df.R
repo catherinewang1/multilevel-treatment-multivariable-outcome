@@ -68,7 +68,7 @@ if(CREATE_INDIVIDUAL_PVAL_DATAFRAMES) {
 if(CREATE_SUMMARY_DATAFRAME) {
   
   # create a summary df
-  for(setting_name in c('A', 'E')) {
+  for(setting_name in setting_names) {
     # list all the repetition directory names (likely just 1, ...., 20)
     save_files_rep = list.files(path = sprintf('%s%s', overall_save_folder, setting_name) , 
                                 pattern = 'sim_result_ebci_pvals.rds', recursive=TRUE, full.names = TRUE)

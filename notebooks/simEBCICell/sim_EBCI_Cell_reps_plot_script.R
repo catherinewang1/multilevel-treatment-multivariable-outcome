@@ -11,10 +11,12 @@ suppressPackageStartupMessages(library(RColorBrewer))
 suppressPackageStartupMessages(library(latex2exp))
 
 source('../../utils/matrix_shrinkage.r')
-source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
+source('../../utils/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
 source('../../utils/simEBCICell_utils.R') 
-overall_save_folder = '../../plots/simEBCICell/'
 
+
+overall_save_folder = '../../plots/simEBCICell/'
+setting_names = c('A', 'E')
 
 
 CREATE_PLOTS_INDIVIDUAL      = TRUE # create these plots or not
@@ -41,14 +43,15 @@ if(CREATE_PLOTS_INDIVIDUAL) {
       tryCatch(expr = {
         
         
+        cur_plot_specs = list(mse=list(height=5, width=8), miscoverage=list(height=5, width=8))
+        if(setting_name == 'E') {cur_plot_specs$matrix_individual = list(color_limits = c(-.5, 1.5))}
+        
         make_plots_from_save(sim_results_filenames=sprintf('%s/sim_results.rds', cur_save_folder_rep),
-                             save_folder=cur_save_folder_rep,
-                             which_plots = list(matrix=FALSE, mse=TRUE, miscoverage=TRUE, matrix_individual=TRUE),
-                             write_plot_df = FALSE, write_summary_df=TRUE,
-                             plot_specs =list(mse=list(height=5, width=8), miscoverage=list(height=5, width=8)))
-
-        
-        
+                            save_folder=cur_save_folder_rep,
+                            which_plots = list(matrix=FALSE, mse=TRUE, miscoverage=TRUE, matrix_individual=TRUE),
+                            write_plot_df = FALSE, write_summary_df=TRUE,
+                            plot_specs =cur_plot_specs)
+      
       },  error = function(e) {
         print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
       })
@@ -73,66 +76,66 @@ if(CREATE_PLOTS_OVERALL) {
                        ranks   = sim_results$ranks, 
                        ALPHA   = sim_results$ALPHA, 
                        save_folder = sprintf('%s%s/', overall_save_folder, setting_name), 
-                       height=5, width=8, 
-                       save_ggplot=FALSE, plot_df_is_summ=TRUE) 
+                       height=7, width=12, 
+                       save_ggplot=TRUE, plot_df_is_summ=TRUE) 
     
     h5_3_plots_mse(plot_df = summary_df, 
                    ranks   = sim_results$ranks, 
                    save_folder = sprintf('%s%s/', overall_save_folder, setting_name), 
-                   height=5, width=8, 
+                   height=7, width=12, 
                    save_ggplot=FALSE, plot_df_is_summ=TRUE)
     
     
     
     
-    methodrank_colors = create_color_pallete_nicenames(ranks = sim_results$ranks)
-    # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
-    methodrank_nicenames_order = c()
-    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
-      for(cur_rank in c(NA, sim_results$ranks)) {
-        methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
-      }
-    }
-    plot_df_summ = summary_df |> 
-      filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
-      filter(true_theta != 0) |>
-      group_by(sim_distn, split_type, method, rank) |> 
-      summarize(mse = mean(mse), .groups = 'drop') |> 
-      mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
-    
-    
-    summary_df |> filter(method == 'unshrunk')
-    
-    plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
-    plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
-    
-    # take the mse from unshrunk on Full Dataset
-    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
-    original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
-    
-    
-    
-  
-    ggplot() +
-      geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
-      geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
-      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
-                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
-                 labeller = label_value
-      ) +
-      scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
-      labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
-      scale_y_continuous(expand = expansion(mult = c(0, .05))) +
-      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
-        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
-        panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
-        axis.ticks.x = element_blank())
-    
-    
-    
-    
-    
+    # methodrank_colors = create_color_pallete_nicenames(ranks = sim_results$ranks)
+    # # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...
+    # methodrank_nicenames_order = c()
+    # for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    #   for(cur_rank in c(NA, sim_results$ranks)) {
+    #     methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+    #   }
+    # }
+    # plot_df_summ = summary_df |> 
+    #   filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+    #   filter(true_theta != 0) |>
+    #   group_by(sim_distn, split_type, method, rank) |> 
+    #   summarize(mse = mean(mse), .groups = 'drop') |> 
+    #   mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+    #          split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+    # 
+    # 
+    # summary_df |> filter(method == 'unshrunk')
+    # 
+    # plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+    # plot_df_summ$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+    # 
+    # # take the mse from unshrunk on Full Dataset
+    # original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
+    # original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
+    # 
+    # 
+    # 
+    # 
+    # ggplot() +
+    #   geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+    #   geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
+    #   facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+    #              # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+    #              labeller = label_value
+    #   ) +
+    #   scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+    #   labs(title = 'MSE', x = 'method + rank', y = 'mse', fill = 'Method') +
+    #   scale_y_continuous(expand = expansion(mult = c(0, .05))) +
+    #   theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+    #     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+    #     panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA), 
+    #     axis.ticks.x = element_blank())
+    # 
+    # 
+    # 
+    # 
+    # 
     }
 }
 

@@ -27,7 +27,7 @@ suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 20)
 # our code
 source('../../utils/matrix_shrinkage.r')
-source('../matrixPrior/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
+source('../../utils/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
 
 source('../../utils/simEBCICell_utils.R') 
 

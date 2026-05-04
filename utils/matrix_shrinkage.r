@@ -196,7 +196,7 @@ plot_set_rowcol_order <- function(mat, save_folder=NULL, include_mat_tall=FALSE)
 approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_rank_plots=FALSE, color_limits = c(-2, 2), methodParams=NULL, 
                           grna_gene_ordering=NULL) {
   
-  if(!dir.exists(save_folder)) {print('approx_matrix: save_folder input folder does not exist!')}
+  if(!dir.exists(save_folder)) {print(sprintf('approx_matrix: save_folder input folder does not exist! %s', save_folder))}
   # mat = matrices$estimates|> as.matrix() 
   # mat |> as.matrix() |> as.vector() |> hist() # <- set limits to -2, 2
   # method = 'sparseSVD'
@@ -431,10 +431,10 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
     approxmatrices = list()
     # estimate_matapprox_plots[[est_method]][[split]][['matcomp_softImpute']] = list()
     for(r in ranks) {
-      approxmatrices[[r]] = matrix(NA, nrow = n, ncol = m, dimnames = list(row.names(mat), colnames(mat)))
+      approxmatrices[[r]] = matrix(NA, nrow = nrow(mat), ncol = ncol(mat), dimnames = list(row.names(mat), colnames(mat)))
       matcomp_fun         = create_matrix_completion_softImpute(X = mat, rank_max = r, type = 'als')  # from utils/matrixPrior_utils.R
-      for(i in 1:n) {
-        for(j in 1:m) {
+      for(i in 1:nrow(mat)) {
+        for(j in 1:ncol(mat)) {
           approxmatrices[[r]][i,j] = matcomp_fun(i, j)
         }
       }

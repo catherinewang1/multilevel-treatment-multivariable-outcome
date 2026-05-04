@@ -1,7 +1,30 @@
-
-# Use saved sceptre result to perf shrinkage
-
-# Some saved plots:
+# Use saved SCEPTRE results to perform EBCI shrinkage
+# 
+# 
+# Requires previously saved SCEPTRE analysis results under <sceptre_save_path>/
+# Specifically: <sceptre_save_path>/sceptre_obj_[train|test|all].rds 
+# 
+# Sections:
+#   LOAD
+#   PREPARE
+#   INITIAL SCEPTRE RESULT PLOTS
+#   PERFORM MATRIX APPROXIMATIONS
+#   PERFORM EBCI SHRINKAGE
+#   SHRINKAGE PLOTS
+# 
+# 
+# Require previously saved objects: <sceptre_save_path>/
+#  - sceptre_obj_test.rds
+#  - sceptre_obj_train.rds
+#  - sceptre_obj_all.rds
+#
+# Newly saved objects: <replogle_save_path>/
+#  - gene_index.csv
+#  - grna_index.csv
+#  - estse_matrices.rds (matrices of estimates (log_2_fold_change) and se's)
+#  - approxmatrices.rds (matrices of approximations of estimates)
+#  - EBCI_shrinkage.rds (matrix of EBCI shrinkage results)
+# Newly saved plots: <plot_path>/
 #  - mat/
 #  -     estimates/   Estimates (original estimates)
 #  -     matapprox/   Approximating Matrices (matrix Approximations)
@@ -10,10 +33,22 @@
 
 
 # script params
-sceptre_save_path = '../saves/sceptre/replogle/'
-plot_path = '../plots/replogle/'
+sceptre_save_path = '../../saves/sceptre/replogle/' # location where sceptre results are located
+replogle_save_path= '../../saves/replogle/'         # location to save replogle approximations/shrinkage/etc. results
+plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of EBCI analysis on replogle dataset
+# dir.exists(sceptre_save_path); dir.exists(replogle_save_path); dir.exists(plot_path)
 
+
+
+# Miscoverage level of the EBCI 
 ALPHA = .1
+
+
+# NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
+NUM_GENES = 10; NUM_GRNAS = 5           # number of grna-gene pairs to test (Test code is running first)
+NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05 # threshold for cleaning grnas/genes
+
+ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 
 # libraries
 suppressPackageStartupMessages(library(dplyr))
@@ -23,8 +58,12 @@ suppressPackageStartupMessages(library(RColorBrewer))
 suppressPackageStartupMessages(library(ebci)) # robust emp shrinkage
 suppressPackageStartupMessages(library(assertthat)) 
 
-# our code
-source('../utils/matrix_shrinkage.r')
+# our code (perform shrinkage + plots + etc...)
+source('../../utils/matrix_approx_fns.r') # should move more functions here for general purpose
+source('../../utils/matrix_shrinkage.r')
+
+
+
 
 
 
@@ -55,13 +94,13 @@ for(split in c('all', 'train', 'test')) {
 }
 
 
-effects[['all']] |> head()
-effects[['all']] |> filter(test == 'discovery') |> group_by(gene) |> summarize(count = n()) |>pull(count) |> range()
-effects[['all']] |> filter(test == 'discovery') |> group_by(grna) |> summarize(count = n()) |>pull(count) |> range()
-
-effects[['all']] |> filter(test == 'discovery') |> pull(estimate) |> is.na() |> mean()
-
-effects[['all']] |> filter(test == 'discovery') |> filter(is.na(estimate))
+# effects[['all']] |> head()
+# effects[['all']] |> filter(test == 'discovery') |> group_by(gene) |> summarize(count = n()) |>pull(count) |> range()
+# effects[['all']] |> filter(test == 'discovery') |> group_by(grna) |> summarize(count = n()) |>pull(count) |> range()
+# 
+# effects[['all']] |> filter(test == 'discovery') |> pull(estimate) |> is.na() |> mean()
+# 
+# effects[['all']] |> filter(test == 'discovery') |> filter(is.na(estimate))
 
 
 
@@ -113,9 +152,9 @@ topgrnas = effects_df |> group_by(grna) |> summarize(sum_effects = sum(abs(estim
 
 
 # Do a few simple steps to filter out genes and grnas
-
-NUM_GENES = 1000; NUM_GRNAS = 50
-NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05
+# # moved to beginning, define script params at the beginning
+# NUM_GENES = 1000; NUM_GRNAS = 50
+# NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05
 
 ## 1. Take top 2.5*NUM_GENES and 4*NUM_GRNAS (could change mult factor)
 cur_genes = topgenes |> arrange(desc(score)) |> head(4*NUM_GENES) |> pull(gene)
@@ -172,7 +211,7 @@ matscaled[is.nan(matscaled)] = 0
 
 # choose some ordering for the rows and columns (mainly for fixed matrix s.t. the blocks exist)
 # ORDER_METHOD = 'hierarchichal' # hier cl on margins separately
-ORDER_METHOD = 'spectralsvd'   # CUSTOM SPECTRAL CL ON SVD
+# ORDER_METHOD = 'spectralsvd'   # CUSTOM SPECTRAL CL ON SVD # move to beginning of script
 # ORDER_METHOD = 'biclust'   # something from biclust package (doesn't work)
 if(ORDER_METHOD == 'hierarchichal') {
   # HIERARHICHAL CLUSTERING MARGINAL
@@ -191,17 +230,17 @@ if(ORDER_METHOD == 'hierarchichal') {
   svdres = svd(matscaled)
   plot(svdres$d)
   
-  k = 5
+  k = min(5, NUM_GENES-1, NUM_GRNAS-1) # when testing smaller sets, k cannot be too large
   row_clusters = kmeans(svdres$u[, 1:k], centers = k)$cluster
   col_clusters = kmeans(svdres$v[, 1:k], centers = k)$cluster
   grna_index = data.frame(grna = row.names(matscaled),
                           cl   = row_clusters) |>
     arrange(cl) |>
-    mutate(grna_idx = 1:n())
+    mutate(grna_idx = 1:n()) # |> select(grna, grna_idx)
   gene_index = data.frame(gene = colnames(matscaled),
                           cl   = col_clusters) |>
     arrange(cl) |>
-    mutate(gene_idx = 1:n())
+    mutate(gene_idx = 1:n()) # |> select(gene, gene_idx)
 } else if(ORDER_METHOD == 'biclust') {
   # NONE OF THESE WORK (package: biclust)
   # BICLUSTER: spectral doesn't work, clusters not distinct enough
@@ -240,8 +279,8 @@ if(ORDER_METHOD == 'hierarchichal') {
 est_matrices = list()
 se_matrices = list()
 for(split in c('all', 'train', 'test')) {
-  # tall dataframe
-  effects_df_split =  effects[[split]] |> dplyr::filter(test == 'discovery' & (gene %in% chosen_genes) & (grna %in% chosen_grnas))
+  # tall dataframe (positive tests are within the discoveries (e.g. so we only filter on discoveries to avoid repeitions))
+  effects_df_split =  effects[[split]] |> dplyr::filter((test == 'discovery') & (gene %in% chosen_genes) & (grna %in% chosen_grnas)) 
   # estimates
   # matrix form: grna x gene
   matrices_estimate_split = effects_df_split  |> 
@@ -265,10 +304,16 @@ for(split in c('all', 'train', 'test')) {
 }
 
 # save the chosen grna_index and gene_index (ordered collection of grna and gene)
-write.csv(x = gene_index |> select(gene, gene_idx), file=sprintf('%s/gene_index.csv', sceptre_save_path), row.names=FALSE)
-write.csv(x = grna_index |> select(grna, grna_idx), file=sprintf('%s/grna_index.csv', sceptre_save_path), row.names=FALSE)
+gene_index = gene_index |> select(gene, gene_idx) # only keep these cols (e.g. don't need cluster col if added)
+grna_index = grna_index |> select(grna, grna_idx)
+write.csv(x = gene_index |> select(gene, gene_idx), file=sprintf('%s/gene_index.csv', replogle_save_path), row.names=FALSE)
+write.csv(x = grna_index |> select(grna, grna_idx), file=sprintf('%s/grna_index.csv', replogle_save_path), row.names=FALSE)
 
 
+
+saveRDS(list(est_matrices=est_matrices, se_matrices=se_matrices,
+             DESCRIPTION = 'Matrices of Estimates (SCEPTRE log_2_fc) and SE (standard errors): using the chosen top and sorted grnas (rows) and genes (cols)'), 
+        sprintf('%s/estse_matrices.rds', replogle_save_path))
 
 
 # ======================================================================================================================================
@@ -280,7 +325,9 @@ write.csv(x = grna_index |> select(grna, grna_idx), file=sprintf('%s/grna_index.
 # ------------------------------------------------------------------------------------------------------------------------------------------
 # First, some plots showing SCEPTRE Results
 print(sprintf("[%s]     - some plots", Sys.time()))
-dir.create(plot_path)
+dir.create(plot_path, showWarnings=FALSE)
+dir.create(sprintf('%s/initialSCEPTRE/', plot_path), showWarnings=FALSE)
+
 
 
 
@@ -297,79 +344,87 @@ color_breaks_label[which.max(color_breaks)] = sprintf('>%.1f', max(color_breaks)
 
 
 
-
-# add original estimates ---------------------------------------------------
-# (all the loaded dfs should have these) (2x for plotting)
-
-
-plot_df = effects_df |> select(grna, gene, estimate)
-
-# add idx's- (from gene or grna name --> number on the axis)
-plot_df = merge(gene_index, plot_df, by = 'gene')
-plot_df = merge(grna_index, plot_df, by = 'grna')
-
-
-# plot_df$rank = factor(plot_df$rank, levels = c('unshrunk', 'shrunk'))  
+# for all, train, test split
+for(data_split in c('train', 'test', 'all')) {
+  # add original estimates ---------------------------------------------------
+  # (all the loaded dfs should have these) (2x for plotting)
+  # plot_df = effects_df |> select(grna, gene, estimate)
+  # plot_df = effects[[data_split]] |> filter(test == 'discovery')
+  plot_df = effects[[data_split]] |> filter((test == 'discovery') & (gene %in% chosen_genes) & (grna %in% chosen_grnas)) 
+  
+  # add idx's- (from gene or grna name --> number on the axis)
+  plot_df = merge(gene_index, plot_df, by = 'gene', all.y = TRUE, all.x = FALSE)
+  plot_df = merge(grna_index, plot_df, by = 'grna', all.y = TRUE, all.x = FALSE)
 
 
-
-# --------------------------------------------------------------------------------------------------------------------------
-# heatmap of diff values side by side
-plot_df_heatmap =
-  rbind(effects_df |> select(grna, gene,    estimate)  |> dplyr::rename(val =estimate) |> dplyr::mutate(type = 'log_2_fold_change'), 
-        effects_df |> select(grna, gene, fold_change)  |> dplyr::rename(val =  fold_change) |> dplyr::mutate(type = 'fold_change'), 
-        effects_df |> select(grna, gene, significant)  |> dplyr::rename(val =  significant) |> dplyr::mutate(type = 'significant'),
-        effects_df |> select(grna, gene,       tstat)  |> dplyr::rename(val =        tstat) |> dplyr::mutate(type = 'tstat'),
-        effects_df |> mutate(isna = is.na(estimate)) |> 
-                      select(grna, gene,       isna)  |> dplyr::rename(val =        isna) |> dplyr::mutate(type = 'isna')
-        )
+  # plot_df$rank = factor(plot_df$rank, levels = c('unshrunk', 'shrunk'))  
 
 
 
+  # --------------------------------------------------------------------------------------------------------------------------
+  # heatmap of diff values side by side
+  plot_df_heatmap =
+    rbind(plot_df |> select(grna, gene,    estimate)  |> dplyr::rename(val =     estimate) |> dplyr::mutate(type = 'log_2_fold_change'), 
+          plot_df |> select(grna, gene, fold_change)  |> dplyr::rename(val =  fold_change) |> dplyr::mutate(type = 'fold_change'), 
+          plot_df |> select(grna, gene, significant)  |> dplyr::rename(val =  significant) |> dplyr::mutate(type = 'significant'),
+          plot_df |> select(grna, gene,       tstat)  |> dplyr::rename(val =        tstat) |> dplyr::mutate(type = 'tstat'),
+          plot_df |> mutate(isna = is.na(estimate))   |> 
+                     select(grna, gene,       isna)   |> dplyr::rename(val =         isna) |> dplyr::mutate(type = 'isna')
+          )
 
 
-# add idx's- (from gene or grna name --> number on the axis)
-plot_df_heatmap = merge(gene_index, plot_df_heatmap, by = 'gene')
-plot_df_heatmap = merge(grna_index, plot_df_heatmap, by = 'grna')
+
+  
+
+  # add idx's- (from gene or grna name --> number on the axis)
+  plot_df_heatmap = merge(gene_index, plot_df_heatmap, by = 'gene')
+  plot_df_heatmap = merge(grna_index, plot_df_heatmap, by = 'grna')
 
 
-plot_df_heatmap$type = factor(plot_df_heatmap$type, levels = c('log_2_fold_change', 'fold_change', 'tstat', 'significant', 'isna'))  
+  plot_df_heatmap$type = factor(plot_df_heatmap$type, 
+                                levels = c('log_2_fold_change', 'fold_change', 'tstat', 'significant', 'isna'),
+                                labels = c('Log2 Fold Change',  'Fold Change', 't-stat', 'significant', 'missing'))  
 
 
 
-# plot
-p_heatmap = ggplot(plot_df_heatmap) +
-  geom_raster(aes(x = grna_idx, y = gene_idx, fill = val)) +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_y_continuous(expand = c(0, 0)) +
-  labs(x='grna', y = 'gene', fill = NULL, title = 'Estimates') +
-  scale_fill_gradient2(limits = color_limits, # set color limits
-                       oob=scales::squish, # if outside lims, set to limits
-                       midpoint = 0,
-                       high = myRed, low = myBlue, mid = 'white',
-                       # low  = brewer.pal(n = 9, name = "RdBu")[9],
-                       # high = brewer.pal(n = 9, name = "RdBu")[1],
-                       breaks = color_breaks,
-                       labels = color_breaks_label) +
-  facet_grid(#rows = vars(approxmethod),
-    cols = vars(type)) +
-  theme_bw() +
-  theme(strip.background = element_rect(fill = 'white'), 
-        panel.spacing = unit(.2, 'lines'),
-        axis.ticks = element_blank(), 
-        axis.text = element_blank(), 
-        legend.position = 'bottom', 
-        # legend.key.size = unit(.5, 'cm'),
-        legend.key.height = unit(.3, 'cm'),
-        legend.key.width  = unit(1.75, 'cm'),
-        legend.text = element_text(size = 7))
-p_heatmap
+  # plot
+  p_heatmap = ggplot(plot_df_heatmap) +
+    geom_raster(aes(x = grna_idx, y = gene_idx, fill = val)) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(x='grna', y = 'gene', fill = NULL, title = 'Estimates') +
+    scale_fill_gradient2(limits = color_limits, # set color limits
+                         oob=scales::squish, # if outside lims, set to limits
+                         midpoint = 0,
+                         high = myRed, low = myBlue, mid = 'white',
+                         # low  = brewer.pal(n = 9, name = "RdBu")[9],
+                         # high = brewer.pal(n = 9, name = "RdBu")[1],
+                         breaks = color_breaks,
+                         labels = color_breaks_label) +
+    facet_grid(#rows = vars(approxmethod),
+      cols = vars(type)) +
+    theme_bw() +
+    theme(strip.background = element_rect(fill = 'white'), 
+          panel.spacing = unit(.2, 'lines'),
+          axis.ticks = element_blank(), 
+          axis.text = element_blank(), 
+          legend.position = 'bottom', 
+          # legend.key.size = unit(.5, 'cm'),
+          legend.key.height = unit(.3, 'cm'),
+          legend.key.width  = unit(1.75, 'cm'),
+          legend.text = element_text(size = 7))
+  p_heatmap
+  
+  ggsave(plot = p_heatmap, filename = sprintf('%s/initialSCEPTRE/%s.pdf', plot_path, data_split), height = 7, width = 7)
 
-ggsave(plot = p_heatmap, filename = sprintf('%s/sceptre_estimates.pdf', plot_path), height = 7, width = 7)
+  rm(plot_df, plot_df_heatmap, p_heatmap)
+}
+
 
 # ======================================================================================================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 #       PERFORM MATRIX APPROXIMATIONS:                                             =====================================================
+#       these are matrices to shrink towards                                       =====================================================
 #       approx the log_2_fold matrices using the following methods ┌┌─┬┐─────────┐ =====================================================
 #         - low rank (SVD)                                         │├┬┴┤         │ =====================================================
 #         - sparse SVD                                             │└┴─┘╔═╗      │ =====================================================
@@ -380,18 +435,17 @@ ggsave(plot = p_heatmap, filename = sprintf('%s/sceptre_estimates.pdf', plot_pat
 #         - average                                                                =====================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
-
+# should move this to the top of script
 matapprox_methods          = c('softImpute', 'SVD', 'sparseSVD', 'sparseSVD_autoparams', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
 matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
-ranks = c(1, 3, 5, 10, 20, 30)
+# ranks = c(1, 3, 5, 10, 20, 30)
+ranks = c(1, 3, 5)
+matapprox_methods = matapprox_methods[c(2, 3, 5, 6, 7)] # select a subset for testing
+
 
 # for each split type (no split vs split)
 # for each matrix approximation method
 # split_type = 'nosamplesplit' # vs 'samplesplit' 
-
-data_split = 'all' # vs 'train'
-cur_matapprox_method = 'matdecomp_svd'
-
 
 my_methodParams = list('sparseSVD' = list(type = 'standard', 
                                           sumabs = .35,  # should be between 0-1, 
@@ -400,79 +454,54 @@ my_methodParams = list('sparseSVD' = list(type = 'standard',
                                           trace = FALSE))
 
 
-# call svd = lowrank
-
-
-dir.create(sprintf('%s/mat/', plot_folder)) # replogle/mat/
+dir.create(sprintf('%s/matapprox/',      plot_path), showWarnings=FALSE) # replogle/EBCI/matapprox/
+dir.create(sprintf('%s/matapprox/all',   plot_path), showWarnings=FALSE) # replogle/EBCI/matapprox/all
+dir.create(sprintf('%s/matapprox/train', plot_path), showWarnings=FALSE) # replogle/EBCI/matapprox/train
 
 # plot settings- consistent across approxmatrices plots- based on 'all' estimates
-grna_gene_ordering = plot_set_rowcol_order(mat = all, save_folder=sprintf('%s/mat/', plot_folder))
+# grna_gene_ordering = plot_set_rowcol_order(mat = all, save_folder=sprintf('%s/mat/all/', plot_path)) # rerun diff for this
+# # save the chosen grna_index and gene_index (ordered collection of grna and gene)
+# gene_index = read.csv(file=sprintf('%s/gene_index.csv', replogle_save_path), row.names=FALSE)
+# grna_index = read.csv(file=sprintf('%s/grna_index.csv', replogle_save_path), row.names=FALSE)
+grna_gene_ordering = list(gene_idx=gene_index, grna_index=grna_index)
+
 # color breaks for plotting
-color_limits = c(-2, 2)
-
-
+# color_limits = c(-2, 2) # already defined previously, don't change here
 
 approxmatrices = list() # list of matrix approximations
 for(data_split in c('all', 'train')) {
-  print("[%s] Approximating on <%s> split", Sys.time(), data_split)
-  dir.create(sprintf('%s/%s', plot_path, data_split),  showWarnings = FALSE) 
+  print(sprintf("[%s] Approximating on %s split", format( Sys.time(), format = "%F %r"), data_split))
+  # dir.create(sprintf('%s/%s', plot_path, data_split),  showWarnings = FALSE) 
   approxmatrices[[data_split]] = list()
-
   mat_to_approx = est_matrices[[data_split]]   
+  mat_to_approx[is.na(mat_to_approx)] = 0 # fill NA as 0
 
-  for(cur_matapprox_method in mat_approx_methods) {
-  
-  
-  dir.create(sprintf('%s/%s/%s/', plot_path, data_split, cur_matapprox_method),  showWarnings = FALSE) 
-
-    # if(cur_matapprox_method %in% names(my_methodParams)) {
-    #   cur_methodParams = my_methodParams[[cur_matapprox_method]]
-    # } else {
-    #   cur_methodParams = NULL
-    # }
+  for(matapprox_method in matapprox_methods) {
+    dir.create(sprintf('%s/matapprox/%s/%s/', plot_path, data_split, matapprox_method),  showWarnings = FALSE) 
 
     # use function approx_matrix from utils/matrix_shrinkage.r 
-    approxmatrices[[data_split]] = 
-      approx_matrix(mat                        = mat_to_approx,
-                    method                     = cur_matapprox_method,
-                    ranks                      = ranks, 
-                    save_plots_filepath        = sprintf('%s/%s/%s/', plot_path, data_split, cur_matapprox_method), # e.g. replogle/train/SVD/
-                    save_individual_rank_plots = TRUE,
-                    color_limits               = color_limits,
-                    methodParams               = if(cur_matapprox_method %in% names(my_methodParams)) my_methodParams[[cur_matapprox_method]] else NULL,
-                    grna_gene_ordering         = grna_gene_ordering
-                    )
-    
-    
-    
-    
+    approxmatrices[[data_split]][[matapprox_method]] = 
+      tryCatch(expr = {
+
+        approx_matrix(mat                        = mat_to_approx,
+                      method                     = matapprox_method,
+                      ranks                      = ranks, 
+                      save_folder                = sprintf('%s/matapprox/%s/%s/', plot_path, data_split, matapprox_method), # e.g. replogle/matapprox/train/SVD/
+                      save_individual_rank_plots = TRUE,
+                      color_limits               = color_limits,
+                      methodParams               = if(matapprox_method %in% names(my_methodParams)) my_methodParams[[matapprox_method]] else NULL,
+                      grna_gene_ordering         = grna_gene_ordering
+                      )    
+
+      },
+        error = function(e) {NULL}
+      )
   }
 }
 
 
-# matrix to shrink towards
+saveRDS(approxmatrices, sprintf('%s/approxmatrices.rds', replogle_save_path)) # save the matrix approximations (on log_2_fold_change on train and all splits)
 
-
-  
-
-mat_to_approx = est_matrices[[data_split]]   
-
-# Sparse SVD
-approxmatrices_sparseSVD = 
-  approx_matrix(mat = est_matrices[['train']], 
-                method = 'sparseSVD', 
-                ranks = c(3, 10),
-                methodParams=list(type = 'standard', 
-                                  sumabs = .35,  # should be between 0-1, 
-                                  # sumabsu = 4, sumabsv = 4, # between 1 and sqrt(#col or #rows)
-                                  niter = 100,
-                                  trace = FALSE)) 
-
-
-
-
-
-# plot this matrix
 
 
 
@@ -480,20 +509,93 @@ approxmatrices_sparseSVD =
 # ======================================================================================================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 #                                                                               ========================================================
-#       SHRINKAGE:                                                              ========================================================
+#       PERFORM EBCI SHRINKAGE:                                                 ========================================================
 #                                                                               ========================================================
 #                                                                               ========================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
+dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
 
 
-  if(split_type == 'all') {
-    mat_to_approx = est_matrices[['all']]
-  } else if(nosamplesplit == 'samplesplit') {
-    mat_to_approx = est_matrices[['train']]
+shrink_results = list()
+for(split_type in c('nosamplesplit', 'samplesplit')) {
+  dir.create(sprintf('%s/shrinkage/%s/', plot_path, split_type), showWarnings=FALSE)
+
+  shrink_results[[split_type]] = list()
+
+  if(split_type == 'nosamplesplit') { # shrink ALL on ALL
+    mat_est_to_shrink =   est_matrices[['all']]
+    mat_se_to_shrink  =    se_matrices[['all']]
+    mats_to_shrink_to = approxmatrices[['all']] # list of matrices
+  } else if(split_type == 'samplesplit') { # shrink TEST on TRAIN
+    mat_est_to_shrink =   est_matrices[['test']]
+    mat_se_to_shrink  =    se_matrices[['test']] 
+    mats_to_shrink_to = approxmatrices[['train']] # list of matrices
   } else {
-    print('() bad split_type')
+    print('(replogleShrinkage: shrinkage) bad split_type')
   }
+  
+  
+  for(matapprox_method in matapprox_methods) {
+    dir.create(sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, matapprox_method), showWarnings=FALSE) # plots/
+
+    #' temporary function that shrinks the current matrices in environment to shrink to 
+    #' varying mats_to_shrink_to
+    temp_shrink_matrix <- function(mat_to_shrink_to, save_filename) {
+       
+        shrinkResult = tryCatch(expr = {
+            # shrink_matrix( unshrunk_mat    = mat_est_to_shrink,
+            #                shrinkpoint_mat = mat_to_shrink_to,
+            #                se_mat          = mat_se_to_shrink,
+            #                weight_mat      = (1/mat_se_to_shrink)**4,
+            #                ALPHA           = ALPHA, 
+            #                return_ebci_obj = TRUE) # ~  mins
+          
+          shrink_matrix( unshrunk_mat    = mat_est_to_shrink[1:10, 1:50],
+                         shrinkpoint_mat = mat_to_shrink_to[1:10, 1:50],
+                         se_mat          = mat_se_to_shrink[1:10, 1:50],
+                         weight_mat      = (1/mat_se_to_shrink[1:10, 1:50])**4,
+                         ALPHA           = ALPHA, 
+                         return_ebci_obj = TRUE) # ~  mins
+
+          }, 
+          error = function(e){NULL}
+        )
+          
+        # plot(shrinkResult$ebci_res$shrinkage_point, shrinkResult$ebci_res$shrunk_value)
+        # write.csv(x = shrinkResult$ebci_res, file = sprintf("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")) 
+        write.csv(x = shrinkResult$ebci_res, file = save_filename) 
+        return(shrinkResult)
+    }
+    if(matapprox_methods_hasranks[[matapprox_method]]) {
+      shrink_results[[matapprox_method]] = list()
+      for(r in ranks) {
+        dir.create(sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r), showWarnings=TRUE) # rank folder
+        shrinkResult = temp_shrink_matrix(
+          mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]][[r]]$approxmatrices,
+          save_filename = sprintf('%s/shrinkage/%s/%s/rank=%02.f/ebci_shrinkage_df.csv', plot_path, split_type, matapprox_method, r)
+        )
+        shrink_results[[matapprox_method]][[r]] = shrinkResult$ebci_res
+
+      } 
+    } else {
+      shrinkResult = temp_shrink_matrix(
+        mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]]$approxmatrices,
+        # save_filename = sprintf('%s/shrinkage/a.csv', plot_path)
+        save_filename = sprintf('%s/shrinkage/%s/%s/ebci_shrinkage_df.csv', plot_path, split_type, matapprox_method)
+      )
+      shrink_results[[matapprox_method]] = shrinkResult$ebci_res
+    }
+  }
+}
+   
+
+
+
+
+saveRDS(shrink_results, sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_path)) # save the shrinkage results 
+
+
 
 
 
@@ -501,12 +603,52 @@ approxmatrices_sparseSVD =
 
 # ======================================================================================================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
-#                  +   │─┐                                                      ========================================================
-#       PLOTS:     |─┐ │ └┐                                                     ========================================================
-#                  | ──┘  ────                                                  ========================================================
-#                  +---------+                                                  ========================================================
+#                            +   │─┐                                            ========================================================
+#       SHRINKAGE PLOTS:     |─┐ │ └┐                                           ========================================================
+#                            | ──┘  ────                                        ========================================================
+#                            +---------+                                        ========================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
+
+
+# dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
+
+
+for(split_type in c('nosamplesplit', 'samplesplit')) {  
+  for(matapprox_method in matapprox_methods) {
+
+    #' temporary function that plots some summary results of the shrinkage
+    temp_plot_shrinkage <- function(cur_plot_folder) {
+       
+        tryCatch(expr = {
+           
+           # sparse SVD, rank=3
+          # plot_folder = '../plots/replogle/shrink/spSVD03/'
+          # shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
+          shrink_df = read.csv("%s/ebci_shrinkage_df.csv", cur_plot_folder)
+          dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
+          plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
+          }, 
+          error = function(e){print("Errored at: %s", cur_plot_folder)}
+        )
+        return(NULL)
+    }
+    if(matapprox_methods_hasranks[[matapprox_method]]) {
+      for(r in ranks) {
+        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02f/.csv', plot_path, split_type, matapprox_method, r))
+      }
+    } else {
+        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02f/.csv', plot_path, split_type, matapprox_method, r))
+    }
+  }
+}
+
+
+
+
+
+
+
 
 
 # ======================================================================================================================================
@@ -520,6 +662,8 @@ approxmatrices_sparseSVD =
 
 
 
+if(F) {
+  
 
 
 
@@ -758,8 +902,8 @@ write.csv(x = shrinkLowrank$ebci_res, file = sprintf("../saves/replogle/shrinkag
 
 
 # # load gene_index and grna_index df's to save time
-# gene_index = read.csv(sprintf('%s/gene_index.csv', sceptre_save_path))
-# grna_index = read.csv(sprintf('%s/grna_index.csv', sceptre_save_path))
+# gene_index = read.csv(sprintf('%s/gene_index.csv', replogle_save_path))
+# grna_index = read.csv(sprintf('%s/grna_index.csv', replogle_save_path))
 
 
 # TODO: fix... somehow the  ordered gene and grna sets are not the same as the ones w estimates???
@@ -812,7 +956,7 @@ plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols
 
 
 
-
+}
 
 
 

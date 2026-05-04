@@ -17,6 +17,9 @@
 #
 
 
+require(softImpute)
+
+
 
 #' Perform Matrix Completion for leave one out X
 #' Previously in matrixPrior_utils.R. 

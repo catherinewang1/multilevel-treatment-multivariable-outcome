@@ -1213,7 +1213,7 @@ h_plot_ebci_pval <- function(TODO) {
 
 }
 
-h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
+h5_2_2_plot_matrix_individual <- function(sim_results, save_folder, color_limits=NULL) {
     dir.create(sprintf('%s/mat/', save_folder))
     if(is.null(color_limits)) {
       # set limits based on slightly expanded true Theta values
@@ -1270,15 +1270,15 @@ h5_2_2_plot_matrix_individual <- function(sim_results, color_limits=NULL) {
         if(is.matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]])) {
           pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]]) + 
                labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', ')' ))
-          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname), width = 8, height = 8)
-          ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname),
+          ggsave(plot = pl, filename = sprintf('%s/mat/aprx_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/aprx_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname),
                  width = 8, height = 8, units = 'in', dpi = 300)
         } else {
           for(r in sim_results$ranks) {
             pl = my_display_matrix(sim_results$estimate_matapprox[[est_method]][[splittype]][[approx_method]][[r]]) + 
                  labs(title = paste0('Shrinkage Point/Matrix Approximation (', splittype, ' ', approx_method, ' ', r, ')' ))
-            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r), width = 8, height = 8)
-            ggsave(plot = pl, filename = sprintf('%s/mat/approx_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r),
+            ggsave(plot = pl, filename = sprintf('%s/mat/aprx_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/aprx_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype, approx_method_shortname, r),
                    width = 8, height = 8, units = 'in', dpi = 300)
           }
         }
@@ -1838,7 +1838,7 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
     } else {                                 # --- many repetitions
       sim_results = readRDS(sim_results_filenames[1])      
     }
-    h5_2_2_plot_matrix_individual(sim_results=sim_results, color_limits=NULL)
+    h5_2_2_plot_matrix_individual(sim_results=sim_results, save_folder=save_folder, color_limits=plot_specs$matrix_individual$color_limits)
     rm(sim_results)
   }
 
@@ -2743,7 +2743,7 @@ create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
                   miscoverage_rate = 1 - mean(isTrueThetaCovered),
                   nreps = n(),
                   .groups = 'drop')
-
+  
 
 
   df_summary = rbind(df_summary, df_unshrunk_glm)
@@ -2757,8 +2757,15 @@ create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
 
   # === add 1 ebci_pval
   chosen_rep = min(df$rep, na.rm = TRUE) # chosen repetition to save the ebci pvals from 1 rep
-  ebci_pval_1 = df |> filter(rep == chosen_rep) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
-  df_summary = merge(df_summary, ebci_pval_1, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+  ebci_pval_1     = df |> filter(rep == chosen_rep) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+  # add pvals from glm (just use Normal distn, 2*pnorm(-abs(est) / se))
+  ebci_pval_1_glm = df |> filter(rep == chosen_rep)  |> filter(method == 'zeros' & is.na(rank)) # no shrinkage/glm, pick any (would be same)
+  ebci_pval_1_glm$ebci_pvals = 2 * pnorm(-abs(ebci_pval_1_glm$unshrunk_value / ebci_pval_1_glm$se))
+  ebci_pval_1_glm = ebci_pval_1_glm |> mutate(method = 'unshrunk', rank = NA) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+
+  df_summary = merge(df_summary, rbind(ebci_pval_1, ebci_pval_1_glm), 
+                     by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), 
+                     all.x = TRUE)
   # === add fishers combined ebci_pval
   fishers_df = df |> #  mutate(isTheta0 = (true_theta == 0)) |>
                          group_by(sim_distn, split_type, method, rank, gene, grna) |>
@@ -2766,8 +2773,19 @@ create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
                                    fisher_stat = fishers_methodf(ebci_pvals),
                                    count = n(), .groups = 'drop')
   fishers_df$fishers_pval = mapply(FUN = fishers_pvalf, s= fishers_df$fisher_stat, k = fishers_df$count)
+  
+  fishers_df_glm = df  |> filter(method == 'zeros' & is.na(rank)) |> mutate(method = 'unshrunk', rank = NA) # no shrinkage/glm, pick any (would be same)
+  fishers_df_glm$ebci_pvals = 2 * pnorm(-abs(fishers_df_glm$unshrunk_value / fishers_df_glm$se)) 
+  fishers_df_glm = fishers_df_glm |>
+                         group_by(sim_distn, split_type, method, rank, gene, grna) |>
+                         summarize(meanp = mean(ebci_pvals),
+                                   fisher_stat = fishers_methodf(ebci_pvals),
+                                   count = n(), .groups = 'drop')
+  fishers_df_glm$fishers_pval = mapply(FUN = fishers_pvalf, s= fishers_df_glm$fisher_stat, k = fishers_df_glm$count)
 
-  df_summary = merge(df_summary, fishers_df, by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), all.x = TRUE)
+  df_summary = merge(df_summary, rbind(fishers_df, fishers_df_glm), 
+                     by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), 
+                     all.x = TRUE)
 
 
 

@@ -488,6 +488,7 @@ for(data_split in c('all', 'train')) {
   mat_to_approx[is.na(mat_to_approx)] = 0 # fill NA as 0
 
   for(matapprox_method in matapprox_methods) {
+    print(sprintf("[%s]   - Approximating on %s split, %s method", format( Sys.time(), format = "%F %r"), data_split, matapprox_method))
     dir.create(sprintf('%s/matapprox/%s/%s/', plot_path, data_split, matapprox_method),  showWarnings = FALSE) 
 
     # use function approx_matrix from utils/matrix_shrinkage.r 
@@ -514,7 +515,7 @@ for(data_split in c('all', 'train')) {
 saveRDS(approxmatrices, sprintf('%s/approxmatrices.rds', replogle_save_path)) # save the matrix approximations (on log_2_fold_change on train and all splits)
 
 
-
+# approxmatrices = readRDS(sprintf('%s/approxmatrices.rds', replogle_save_path))
 
 
 # ======================================================================================================================================
@@ -554,7 +555,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
 
     #' temporary function that shrinks the current matrices in environment to shrink to 
     #' varying mats_to_shrink_to
-    temp_shrink_matrix <- function(mat_to_shrink_to, save_filename) {
+    temp_shrink_matrix <- function(mat_to_shrink_to, save_filename=NULL) {
        
         shrinkResult = tryCatch(expr = {
             # shrink_matrix( unshrunk_mat    = mat_est_to_shrink,
@@ -564,10 +565,10 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
             #                ALPHA           = ALPHA, 
             #                return_ebci_obj = TRUE) # ~  mins
           
-          shrink_matrix( unshrunk_mat    = mat_est_to_shrink[1:10, 1:50],
-                         shrinkpoint_mat = mat_to_shrink_to[1:10, 1:50],
-                         se_mat          = mat_se_to_shrink[1:10, 1:50],
-                         weight_mat      = (1/mat_se_to_shrink[1:10, 1:50])**4,
+          shrink_matrix( unshrunk_mat    = mat_est_to_shrink,
+                         shrinkpoint_mat = mat_to_shrink_to,
+                         se_mat          = mat_se_to_shrink,
+                         weight_mat      = (1/mat_se_to_shrink)**4,
                          ALPHA           = ALPHA, 
                          return_ebci_obj = TRUE) # ~  mins
 
@@ -577,7 +578,12 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
           
         # plot(shrinkResult$ebci_res$shrinkage_point, shrinkResult$ebci_res$shrunk_value)
         # write.csv(x = shrinkResult$ebci_res, file = sprintf("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")) 
-        write.csv(x = shrinkResult$ebci_res, file = save_filename) 
+        # write.csv(x = shrinkResult$ebci_res, file = save_filename) 
+        if(!is.null(save_filename)) {
+          shrinkResult$DESCRIPTION = 'Result from calling shrink_matrix(...) which is a list with ebci_res (dataframe from ebci shrinkage results) and ebci_obj (the resulting ebci fit)'
+          saveRDS(object = shrinkResult, file = save_filename)
+        }
+        
         return(shrinkResult)
     }
     if(matapprox_methods_hasranks[[matapprox_method]]) {
@@ -585,8 +591,8 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
       for(r in ranks) {
         dir.create(sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r), showWarnings=TRUE) # rank folder
         shrinkResult = temp_shrink_matrix(
-          mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]][[r]]$approxmatrices,
-          save_filename = sprintf('%s/shrinkage/%s/%s/rank=%02.f/ebci_shrinkage_df.csv', plot_path, split_type, matapprox_method, r)
+          mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]]$approxmatrices[[r]],
+          save_filename = sprintf('%s/shrinkage/%s/%s/rank=%02.f/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method, r)
         )
         shrink_results[[matapprox_method]][[r]] = shrinkResult$ebci_res
 
@@ -595,7 +601,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
       shrinkResult = temp_shrink_matrix(
         mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]]$approxmatrices,
         # save_filename = sprintf('%s/shrinkage/a.csv', plot_path)
-        save_filename = sprintf('%s/shrinkage/%s/%s/ebci_shrinkage_df.csv', plot_path, split_type, matapprox_method)
+        save_filename = sprintf('%s/shrinkage/%s/%s/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method)
       )
       shrink_results[[matapprox_method]] = shrinkResult$ebci_res
     }
@@ -640,7 +646,9 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
            # sparse SVD, rank=3
           # plot_folder = '../plots/replogle/shrink/spSVD03/'
           # shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
-          shrink_df = read.csv(sprintf("%s/ebci_shrinkage_df.csv", cur_plot_folder))
+          # shrink_df = read.csv(sprintf("%s/ebci_shrinkage_df.csv", cur_plot_folder))
+          shrink_res = readRDS(sprintf('%s/ebci_shrinkage_res.rds', cur_plot_folder)) # load in the prev saved ebci shrinkage results
+          shrink_df = shrink_res$ebci_res; rm(shrink_res)                             # use the dataframe part of the result
           dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
           plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
           }, 

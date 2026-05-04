@@ -50,6 +50,17 @@ NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05 # threshold for cleaning grnas/genes
 
 ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 
+
+# should move this to the top of script
+matapprox_methods          = c('softImpute', 'SVD', 'sparseSVD', 'sparseSVD_autoparams', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
+matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
+# ranks = c(1, 3, 5, 10, 20, 30)
+ranks = c(1, 2)
+matapprox_methods = matapprox_methods[c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros')] # select a subset for testing
+
+
+
+
 # libraries
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(tidyr))
@@ -435,12 +446,6 @@ for(data_split in c('train', 'test', 'all')) {
 #         - average                                                                =====================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
-# should move this to the top of script
-matapprox_methods          = c('softImpute', 'SVD', 'sparseSVD', 'sparseSVD_autoparams', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
-matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
-# ranks = c(1, 3, 5, 10, 20, 30)
-ranks = c(1, 3, 5)
-matapprox_methods = matapprox_methods[c(2, 3, 5, 6, 7)] # select a subset for testing
 
 
 # for each split type (no split vs split)
@@ -494,7 +499,7 @@ for(data_split in c('all', 'train')) {
                       )    
 
       },
-        error = function(e) {NULL}
+        error = function(e) {print(sprintf("Errored at: %s, %s", data_split, matapprox_method)); NULL}
       )
   }
 }
@@ -559,7 +564,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
                          return_ebci_obj = TRUE) # ~  mins
 
           }, 
-          error = function(e){NULL}
+          error = function(e){print(sprintf("Errored at: %s, %s", split_type, matapprox_method)); NULL}
         )
           
         # plot(shrinkResult$ebci_res$shrinkage_point, shrinkResult$ebci_res$shrunk_value)
@@ -625,7 +630,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
            # sparse SVD, rank=3
           # plot_folder = '../plots/replogle/shrink/spSVD03/'
           # shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
-          shrink_df = read.csv("%s/ebci_shrinkage_df.csv", cur_plot_folder)
+          shrink_df = read.csv(sprintf("%s/ebci_shrinkage_df.csv", cur_plot_folder))
           dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
           plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
           }, 
@@ -638,7 +643,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
         temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r))
       }
     } else {
-        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r))
+        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, matapprox_method))
     }
   }
 }

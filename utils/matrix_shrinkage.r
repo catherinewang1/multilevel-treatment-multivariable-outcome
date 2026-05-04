@@ -517,7 +517,7 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
   
   plot_df_all=NULL # will be returned
   # make plots if requested (ie save_folder is given and valid)
-  if(!is.null(save_folder) && !dir.exists(save_folder)) {
+  if(!is.null(save_folder) && dir.exists(save_folder)) {
     # color breaks for plotting
     color_breaks = sort(union(color_limits, seq(from = round(color_limits[1]), to = round(color_limits[2]))))
     color_breaks_label = color_breaks

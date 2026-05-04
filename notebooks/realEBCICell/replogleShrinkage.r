@@ -44,8 +44,8 @@ plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of 
 ALPHA = .1
 
 
-# NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
-NUM_GENES = 10; NUM_GRNAS = 5           # number of grna-gene pairs to test (Test code is running first)
+NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
+# NUM_GENES = 10; NUM_GRNAS = 5           # number of grna-gene pairs to test (Test code is running first)
 NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05 # threshold for cleaning grnas/genes
 
 ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
@@ -54,9 +54,9 @@ ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 # should move this to the top of script
 matapprox_methods          = c('softImpute',      'SVD',      'sparseSVD',      'sparseSVD_autoparams',     'spectralbiclust',      'spectralbiclust_threshold',      'zeros',       'average')
 matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'sparseSVD_autoparams'=TRUE,'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
-# ranks = c(1, 3, 5, 10, 20, 30)
-ranks = c(1, 2)
-matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
+ranks = c(1, 3, 5, 10, 20, 30)
+# ranks = c(1, 2)
+# matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
 
 
 
@@ -532,7 +532,7 @@ dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/repl
 
 shrink_results = list()
 for(split_type in c('nosamplesplit', 'samplesplit')) {
-  print(sprintf("[%s]   - Shrinking with %s type", format( Sys.time(), format = "%F %r"), split_type))
+  print(sprintf("[%s]   - Shrinking with %s split type", format( Sys.time(), format = "%F %r"), split_type))
   dir.create(sprintf('%s/shrinkage/%s/', plot_path, split_type), showWarnings=FALSE)
 
   shrink_results[[split_type]] = list()
@@ -551,6 +551,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
   
   
   for(matapprox_method in matapprox_methods) {
+    print(sprintf("[%s]   - Shrinking with %s split type, %s method", format( Sys.time(), format = "%F %r"), split_type, matapprox_method))
     dir.create(sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, matapprox_method), showWarnings=FALSE) # plots/
 
     #' temporary function that shrinks the current matrices in environment to shrink to 

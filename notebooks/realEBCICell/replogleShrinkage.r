@@ -629,7 +629,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
           dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
           plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
           }, 
-          error = function(e){print("Errored at: %s", cur_plot_folder)}
+          error = function(e){print(sprintf("Errored at: %s", cur_plot_folder))}
         )
         return(NULL)
     }

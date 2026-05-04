@@ -83,7 +83,7 @@ source('../../utils/matrix_shrinkage.r')
 #       LOAD:                                                                   ========================================================
 #                                                                               ========================================================
 # ======================================================================================================================================
-
+print("LOAD: prev saved sceptre results")
 # --------------------------------------------------------------------------------------------------------------------------
 # load saved effects
 effects = list()
@@ -138,7 +138,10 @@ for(split in c('all', 'train', 'test')) {
 #          2. order selected grnas and genes (some (bi)/clustering)             ========================================================
 #          3. construct effect and se matrices subset and ordered               ========================================================
 # ======================================================================================================================================
-print(sprintf("[%s]     - prep", Sys.time()))
+# print(sprintf("[%s]     - prep", Sys.time()))
+print("PREPARE: select grnas and genes and then order them")
+
+
 
 # TODO: Also filter tests based on too large of se's
 # --------------------------------------------------------------------------------------------------------------------------
@@ -332,10 +335,11 @@ saveRDS(list(est_matrices=est_matrices, se_matrices=se_matrices,
 #       INITIAL SCEPTRE RESULT PLOTS:                                           ========================================================
 #             - sceptre estimated effects + approx matrices                     ========================================================
 # ======================================================================================================================================
-
+# print(sprintf("[%s]     - some plots", Sys.time()))
+print("INITIAL SCEPTRE RESULT PLOTS: plot selected grnas and genes original sceptre results")
 # ------------------------------------------------------------------------------------------------------------------------------------------
 # First, some plots showing SCEPTRE Results
-print(sprintf("[%s]     - some plots", Sys.time()))
+
 dir.create(plot_path, showWarnings=FALSE)
 dir.create(sprintf('%s/initialSCEPTRE/', plot_path), showWarnings=FALSE)
 
@@ -446,7 +450,7 @@ for(data_split in c('train', 'test', 'all')) {
 #         - average                                                                =====================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
-
+print("PERFORM MATRIX APPROXIMATIONS:")
 
 # for each split type (no split vs split)
 # for each matrix approximation method
@@ -475,7 +479,7 @@ grna_gene_ordering = list(gene_idx=gene_index, grna_index=grna_index)
 
 approxmatrices = list() # list of matrix approximations
 for(data_split in c('all', 'train')) {
-  print(sprintf("[%s] Approximating on %s split", format( Sys.time(), format = "%F %r"), data_split))
+  print(sprintf("[%s]   - Approximating on %s split", format( Sys.time(), format = "%F %r"), data_split))
   # dir.create(sprintf('%s/%s', plot_path, data_split),  showWarnings = FALSE) 
   approxmatrices[[data_split]] = list()
   mat_to_approx = est_matrices[[data_split]]   
@@ -519,11 +523,13 @@ saveRDS(approxmatrices, sprintf('%s/approxmatrices.rds', replogle_save_path)) # 
 #                                                                               ========================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
+print("PERFORM EBCI SHRINKAGE:")
 dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
 
 
 shrink_results = list()
 for(split_type in c('nosamplesplit', 'samplesplit')) {
+  print(sprintf("[%s]   - Shrinking with %s type", format( Sys.time(), format = "%F %r"), split_type))
   dir.create(sprintf('%s/shrinkage/%s/', plot_path, split_type), showWarnings=FALSE)
 
   shrink_results[[split_type]] = list()
@@ -614,12 +620,14 @@ saveRDS(shrink_results, sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_p
 #                            +---------+                                        ========================================================
 # --------------------------------------------------------------------------------------------------------------------------------------
 # ======================================================================================================================================
+print("SHRINKAGE PLOTS: plot some shrinkage results")
 
 
 # dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
 
 
 for(split_type in c('nosamplesplit', 'samplesplit')) {  
+  print(sprintf("[%s]   - shrinkage plots with %s type", format( Sys.time(), format = "%F %r"), split_type))
   for(matapprox_method in matapprox_methods) {
 
     #' temporary function that plots some summary results of the shrinkage

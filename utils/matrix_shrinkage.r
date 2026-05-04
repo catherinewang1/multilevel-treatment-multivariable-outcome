@@ -464,13 +464,13 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
                                      tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
                                      by = c('row_idx', 'col_idx'))
         if(method == 'spectralbiclust') {
-          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value))
+          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), .groups = 'drop')
           biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
                                           dplyr::select(row_idx, col_idx, bicl_mean) |> dplyr::arrange(row_idx, col_idx), 
                                         row_idx ~ col_idx, value.var="bicl_mean")
         
         } else if(method == 'spectralbiclust_threshold') {
-          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), bicl_sd = sd(value), count = dplyr::n())
+          biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), bicl_sd = sd(value), count = dplyr::n(), .groups = 'drop')
           nbiclusters = nrow(biclust_mean) 
           # zero out if pval is sig dif from 0 w bonferonni correction at alpha=.05 (very rough)
           # from normalization procedure and biclustering, each bicluster should have sd around 1, I think?

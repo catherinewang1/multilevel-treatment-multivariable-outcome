@@ -151,7 +151,8 @@ topgenes = effects_df |> group_by(gene) |> summarize(sum_effects = sum(abs(estim
                                                      sd_effects = sd(estimate, na.rm = TRUE),
                                                      sig_effects = sum(significant, na.rm=TRUE),
                                                      sum_tstats  = sum(abs(estimate/se), na.rm = TRUE),
-                                                     NArate = mean(is.na(estimate))) |>
+                                                     NArate = mean(is.na(estimate)),
+                                                     .groups = 'drop') |>
   mutate(score = scale(sum_effects) + (1/3)* scale(sd_effects) +  sig_effects) |> 
   arrange(desc(score)) |> 
   arrange(desc(sum_tstats))
@@ -159,7 +160,8 @@ topgrnas = effects_df |> group_by(grna) |> summarize(sum_effects = sum(abs(estim
                                                      sd_effects = sd(estimate, na.rm = TRUE),
                                                      sig_effects = sum(significant, na.rm=TRUE),
                                                      sum_tstats  = sum(abs(estimate/se), na.rm = TRUE),
-                                                     NArate = mean(is.na(estimate))) |>
+                                                     NArate = mean(is.na(estimate)),
+                                                     .groups = 'drop') |>
   mutate(score = scale(sum_effects) + (0)* scale(sd_effects) +  sig_effects) |> 
   arrange(desc(score)) |> 
   arrange(desc(sum_tstats))
@@ -175,8 +177,8 @@ cur_genes = topgenes |> arrange(desc(score)) |> head(4*NUM_GENES) |> pull(gene)
 cur_grnas = topgrnas |> arrange(desc(score)) |> head(4*NUM_GRNAS) |> pull(grna)
 ## 2. Remove those with marginal NA missing > threshold
 curr_effects = effects_df |> filter(gene %in% cur_genes & grna %in% cur_grnas) 
-cur_genes = curr_effects |> group_by(gene) |> summarise(NArate = mean(is.na(estimate)), count = n()) |> filter(NArate <= NA_THRESH_GENE) |> pull(gene)
-cur_grnas = curr_effects |> group_by(grna) |> summarise(NArate = mean(is.na(estimate)), count = n()) |> filter(NArate <= NA_THRESH_GRNA) |> pull(grna)
+cur_genes = curr_effects |> group_by(gene) |> summarise(NArate = mean(is.na(estimate)), count = n(), .groups = 'drop') |> filter(NArate <= NA_THRESH_GENE) |> pull(gene)
+cur_grnas = curr_effects |> group_by(grna) |> summarise(NArate = mean(is.na(estimate)), count = n(), .groups = 'drop') |> filter(NArate <= NA_THRESH_GRNA) |> pull(grna)
 ## 3. Take top NUM_GENES and NUM_GRNAS
 cur_genes = topgenes |> filter(gene %in% cur_genes) |> arrange(desc(score)) |> head(NUM_GENES) |> pull(gene)
 cur_grnas = topgrnas |> filter(grna %in% cur_grnas) |> arrange(desc(score)) |> head(NUM_GRNAS) |> pull(grna)
@@ -196,7 +198,7 @@ if(F) {
   
   curr_effects = effects_df |> filter(gene %in% cur_genes & grna %in% cur_grnas) 
   
-  curr_effects |> group_by(gene) |> summarise(NArate = mean(is.na(estimate)), count = n()) |> filter(NArate <= NA_thresh)
+  curr_effects |> group_by(gene) |> summarise(NArate = mean(is.na(estimate), .groups = 'drop'), count = n()) |> filter(NArate <= NA_thresh)
 }
 
   

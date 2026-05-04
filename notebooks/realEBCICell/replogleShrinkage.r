@@ -52,11 +52,11 @@ ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 
 
 # should move this to the top of script
-matapprox_methods          = c('softImpute', 'SVD', 'sparseSVD', 'sparseSVD_autoparams', 'spectralbiclust', 'spectralbiclust_threshold', 'zeros', 'average')
-matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
+matapprox_methods          = c('softImpute',      'SVD',      'sparseSVD',      'sparseSVD_autoparams',     'spectralbiclust',      'spectralbiclust_threshold',      'zeros',       'average')
+matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'sparseSVD_autoparams'=TRUE,'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
 # ranks = c(1, 3, 5, 10, 20, 30)
 ranks = c(1, 2)
-matapprox_methods = matapprox_methods[c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros')] # select a subset for testing
+matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
 
 
 

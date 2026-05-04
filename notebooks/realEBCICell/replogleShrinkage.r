@@ -635,10 +635,10 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
     }
     if(matapprox_methods_hasranks[[matapprox_method]]) {
       for(r in ranks) {
-        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02f/.csv', plot_path, split_type, matapprox_method, r))
+        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r))
       }
     } else {
-        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02f/.csv', plot_path, split_type, matapprox_method, r))
+        temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r))
     }
   }
 }

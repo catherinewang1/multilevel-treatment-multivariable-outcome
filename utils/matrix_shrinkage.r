@@ -196,7 +196,7 @@ plot_set_rowcol_order <- function(mat, save_folder=NULL, include_mat_tall=FALSE)
 approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_rank_plots=FALSE, color_limits = c(-2, 2), methodParams=NULL, 
                           grna_gene_ordering=NULL) {
   
-  if(!dir.exists(save_folder)) {print(sprintf('approx_matrix: save_folder input folder does not exist! %s', save_folder))}
+  if(!is.null(save_folder) && !dir.exists(save_folder)) {print(sprintf('approx_matrix: save_folder input folder does not exist! %s', save_folder))}
   # mat = matrices$estimates|> as.matrix() 
   # mat |> as.matrix() |> as.vector() |> hist() # <- set limits to -2, 2
   # method = 'sparseSVD'
@@ -256,10 +256,10 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
 
 
 
-  color_breaks = sort(union(color_limits, seq(from = round(color_limits[1]), to = round(color_limits[2]))))
-  color_breaks_label = color_breaks
-  color_breaks_label[which.min(color_breaks)] = sprintf('<%.1f', min(color_breaks))
-  color_breaks_label[which.max(color_breaks)] = sprintf('>%.1f', max(color_breaks))
+  # color_breaks = sort(union(color_limits, seq(from = round(color_limits[1]), to = round(color_limits[2]))))
+  # color_breaks_label = color_breaks
+  # color_breaks_label[which.min(color_breaks)] = sprintf('<%.1f', min(color_breaks))
+  # color_breaks_label[which.max(color_breaks)] = sprintf('>%.1f', max(color_breaks))
   
   if(method == 'SVD' || method == 'sparseSVD' || method == 'sparseSVD_autoparams') {
     # has ranks, and can run just 1 time
@@ -448,21 +448,34 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
     for(r in ranks) {
       # try, or else return null
       inner_biclustspectral = function() {
-        spbicl_res = biclust::spectral(mat,
+        # Spectral Biclust Fit
+        if(method %in% names(methodParams)) { # allow user input to set biclust params
+          
+          spbicl_res = do.call(biclust::spectral,
+                               c(list(x=mat, 
+                                      numberOfEigenvalues = r, # here use ranks? or n_best? both for now
+                                      n_best = min(r, 3)), # documentation: rec 2 or 3
+                                 methodParams[[method]])) 
+
+        } else { # else just use some reasonable defaults values
+          spbicl_res = biclust::spectral(mat,
                    # normalization = "bistochastization", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
-                   # normalization = "log", # they recommend log even w their example matrix of negative values?
+                   normalization = "log", # they recommend log even w their example matrix of negative values?
                    numberOfEigenvalues = r, # here use ranks? or n_best?
                    minr=2, minc=2, withinVar=2, n_clusters = NULL, 
                    n_best = min(r, 3) # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
                    )
+        }
+        # Extract biclustering assignment
         row_cl = data.frame(row_idx = row.names(mat), 
                             row_cl  = spbicl_res@info$row_labels)
         col_cl = data.frame(col_idx = colnames(mat), 
                             col_cl  = spbicl_res@info$column_labels)
-
+       
         bicluster_assignment = merge(reshape2::melt(mat, varnames = c('row_idx', 'col_idx'), value.name = 'value'), 
                                      tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
                                      by = c('row_idx', 'col_idx'))
+        # Form values to shrink towards using biclustering assignments (e.g. mean or thresholded --> 0)
         if(method == 'spectralbiclust') {
           biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), .groups = 'drop')
           biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
@@ -480,7 +493,7 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
                                         dplyr::select(row_idx, col_idx, bicl_mean_zeroed) |> dplyr::arrange(row_idx, col_idx), 
                                         row_idx ~ col_idx, value.var="bicl_mean_zeroed")
         }
-        row.names(biclust_mat) = Theta_rownames; colnames(biclust_mat) = Theta_colnames
+        row.names(biclust_mat) = row.names(mat); colnames(biclust_mat) = colnames(mat)
         return(biclust_mat)
       }
 

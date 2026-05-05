@@ -454,6 +454,12 @@ for(data_split in c('train', 'test', 'all')) {
 # ======================================================================================================================================
 print("PERFORM MATRIX APPROXIMATIONS:")
 
+
+
+
+
+
+
 # for each split type (no split vs split)
 # for each matrix approximation method
 # split_type = 'nosamplesplit' # vs 'samplesplit' 
@@ -463,6 +469,9 @@ my_methodParams = list('sparseSVD' = list(type = 'standard',
                                           # sumabsu = 4, sumabsv = 4, # between 1 and sqrt(#col or #rows)
                                           niter = 100,
                                           trace = FALSE))
+my_methodParams[['spectralbiclust']] = list(normalization = "bistochastization",
+                                         minr=2, minc=2, withinVar=2, n_clusters = NULL)
+my_methodParams[['spectralbiclust_threshold']] = my_methodParams[['spectralbiclust']] # use same params for thresholded version too
 
 
 dir.create(sprintf('%s/matapprox/',      plot_path), showWarnings=FALSE) # replogle/EBCI/matapprox/
@@ -983,4 +992,120 @@ plot_shrink_results(shrink_df=shrink_df, plot_folder=plot_folder, order_rowscols
 }
 
 
+# ======================================================================================================================================
+# Tune spectral biclustering parameters
+# ======================================================================================================================================
+if(F) {
+  
+  
+  # try to keep it self contained... 
+  
+  
+  # script params
+  sceptre_save_path = '../../saves/sceptre/replogle/' # location where sceptre results are located
+  replogle_save_path= '../../saves/replogle/'         # location to save replogle approximations/shrinkage/etc. results
+  plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of EBCI analysis on replogle dataset
+  # dir.exists(sceptre_save_path); dir.exists(replogle_save_path); dir.exists(plot_path)
+  
+  
+  # # should move this to the top of script
+  # matapprox_methods          = c('softImpute',      'SVD',      'sparseSVD',      'sparseSVD_autoparams',     'spectralbiclust',      'spectralbiclust_threshold',      'zeros',       'average')
+  # matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'sparseSVD_autoparams'=TRUE,'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
+  ranks = c(1, 3, 5, 10, 20, 30)
+  # ranks = c(1, 2)
+  # matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
+  
+  
+  gene_index = read.csv(file=sprintf('%s/gene_index.csv', replogle_save_path))
+  grna_index = read.csv(file=sprintf('%s/grna_index.csv', replogle_save_path))
+  
+  estse_matrices = readRDS(sprintf('%s/estse_matrices.rds', replogle_save_path))
+  
+  
+  # methodParams = list('spectralbiclust' = list(normalization = "bistochastization",
+  #                                              minr=2, minc=2, withinVar=2, n_clusters = NULL))
+  methodParams[['spectralbiclust']] = list(normalization = "bistochastization",
+                                           minr=2, minc=2, withinVar=2, n_clusters = NULL)
+  methodParams[['spectralbiclust_threshold']] = methodParams[['spectralbiclust']] # use same params for thresholded version too
+  
+  estse_matrices$est_matrices$all |> dim()
+  
+  mat = estse_matrices$est_matrices$all
+  mat0 = mat # keep NA values
+  r = 3
+  mat[is.na(mat)] = 0
+  
+  # allow user input to set biclust params
+  spbicl_res = do.call(biclust::spectral,
+                       c(list(x=mat, 
+                              numberOfEigenvalues = r, # here use ranks? or n_best? both for now
+                              n_best = min(r, 3)), # documentation: rec 2 or 3
+                         methodParams$spectralbiclust)) 
+  
+  # prev
+  # spbicl_res = biclust::spectral(x=mat,
+  #                                normalization = "bistochastization", # log, irrc, bistochastization (in example, bistochastization made could not find cl??)
+  #                                # normalization = "log", # they recommend log even w their example matrix of negative values?
+  #                                numberOfEigenvalues = r, # here use ranks? or n_best?
+  #                                minr=2, minc=2, withinVar=2, n_clusters = NULL, 
+  #                                n_best = min(r, 3) # #e.vecs to which the data is projected for the final clustering step, recommended values are 2 or 3. but maybe we should do more?
+  # )
+  row_cl = data.frame(row_idx = row.names(mat), 
+                      row_cl  = spbicl_res@info$row_labels)
+  col_cl = data.frame(col_idx = colnames(mat), 
+                      col_cl  = spbicl_res@info$column_labels)
+  
+  bicluster_assignment = merge(reshape2::melt(mat, varnames = c('row_idx', 'col_idx'), value.name = 'value'), 
+                               tidyr::expand_grid(row_cl, col_cl) |> dplyr::select(row_idx, col_idx, row_cl, col_cl), 
+                               by = c('row_idx', 'col_idx'))
+  biclust_mean = bicluster_assignment |> dplyr::group_by(row_cl, col_cl) |> dplyr::summarise(bicl_mean = mean(value), .groups = 'drop')
+  biclust_mat = reshape2::acast(merge(bicluster_assignment, biclust_mean, by = c('row_cl', 'col_cl')) |> 
+                                  dplyr::select(row_idx, col_idx, bicl_mean) |> dplyr::arrange(row_idx, col_idx), 
+                                row_idx ~ col_idx, value.var="bicl_mean")
+  # plot differences...
+  mat
+  biclust_mat
+  
+  mat_df_plot = merge(merge(reshape2::melt(mat, varnames = c('grna', 'gene')), 
+                            grna_index),
+                      gene_index)
+  
+  plot_matrix <- function(m) {
+    ggplot(merge(merge(reshape2::melt(m, varnames = c('grna', 'gene')), 
+                       grna_index),
+                 gene_index), 
+           aes(x = grna_idx, y = gene_idx, fill = value)) + 
+      geom_tile() +
+      scale_x_continuous(expand = c(0, 0)) +
+      scale_y_continuous(expand = c(0, 0)) +
+      labs(x='grna', y = 'gene', fill = NULL) +
+      scale_fill_gradient2(limits = c(-2, 2), # set color limits
+                           oob=scales::squish, # if outside lims, set to limits
+                           midpoint = 0,
+                           high = myRed, low = myBlue, mid = 'white',
+                           # low  = brewer.pal(n = 9, name = "RdBu")[9],
+                           # high = brewer.pal(n = 9, name = "RdBu")[1]
+      )
+  }
+  
+  
+  plot_matrix(mat0)
+  plot_matrix(biclust_mat)
+  
+  
+  # test out calling in updated matrix_approx function
+  source('../../utils/matrix_shrinkage.r')
+  
+  
+  
+  test_shrink = approx_matrix(mat = mat, method = 'spectralbiclust', ranks = c(3, 5), save_folder = NULL, save_individual_rank_plots = FALSE, color_limits = NULL,
+                              methodParams = methodParams)
+  
+  
+  plot_matrix(test_shrink$approxmatrices[[3]]) # view the matrix approximations
+  plot_matrix(test_shrink$approxmatrices[[5]])
+  
+  
+}
+# ======================= END: Tune spectral biclustering parameters ===================================================================
 

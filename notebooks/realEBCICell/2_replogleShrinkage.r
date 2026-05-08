@@ -10,7 +10,7 @@
 #   INITIAL SCEPTRE RESULT PLOTS
 #   PERFORM MATRIX APPROXIMATIONS
 #   PERFORM EBCI SHRINKAGE
-#   SHRINKAGE PLOTS
+#   SHRINKAGE PLOTS (potentially move to separate file)
 # 
 # 
 # Require previously saved objects: <sceptre_save_path>/
@@ -24,7 +24,7 @@
 #  - estse_matrices.rds (matrices of estimates (log_2_fold_change) and se's)
 #  - approxmatrices.rds (matrices of approximations of estimates)
 #  - EBCI_shrinkage.rds (matrix of EBCI shrinkage results)
-# Newly saved plots: <plot_path>/
+# Newly saved plots: <plot_path>/    (potentially move to separate file)
 #  - mat/
 #  -     estimates/   Estimates (original estimates)
 #  -     matapprox/   Approximating Matrices (matrix Approximations)
@@ -456,6 +456,20 @@ print("PERFORM MATRIX APPROXIMATIONS:")
 
 
 
+# to start from here, load some saved objects
+if(F) {
+  gene_index = read.csv(file=sprintf('%s/gene_index.csv', replogle_save_path))
+  grna_index = read.csv(file=sprintf('%s/grna_index.csv', replogle_save_path))
+  
+  temp = readRDS(sprintf('%s/estse_matrices.rds', replogle_save_path))
+  est_matrices = temp$est_matrices
+  se_matrices  = temp$se_matrices
+  rm(temp)
+  
+  color_limits = c(-2, 2)
+  
+}
+
 
 
 
@@ -481,9 +495,9 @@ dir.create(sprintf('%s/matapprox/train', plot_path), showWarnings=FALSE) # replo
 # plot settings- consistent across approxmatrices plots- based on 'all' estimates
 # grna_gene_ordering = plot_set_rowcol_order(mat = all, save_folder=sprintf('%s/mat/all/', plot_path)) # rerun diff for this
 # # save the chosen grna_index and gene_index (ordered collection of grna and gene)
-# gene_index = read.csv(file=sprintf('%s/gene_index.csv', replogle_save_path), row.names=FALSE)
-# grna_index = read.csv(file=sprintf('%s/grna_index.csv', replogle_save_path), row.names=FALSE)
-grna_gene_ordering = list(gene_idx=gene_index, grna_index=grna_index)
+# gene_index = read.csv(file=sprintf('%s/gene_index.csv', replogle_save_path))
+# grna_index = read.csv(file=sprintf('%s/grna_index.csv', replogle_save_path))
+grna_gene_ordering = list(gene_index=gene_index, grna_index=grna_index)
 
 # color breaks for plotting
 # color_limits = c(-2, 2) # already defined previously, don't change here
@@ -644,15 +658,15 @@ print("SHRINKAGE PLOTS: plot some shrinkage results")
 # dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
 
 
-for(split_type in c('nosamplesplit', 'samplesplit')) {  
+for(split_type in c('nosamplesplit', 'samplesplit')) {
   print(sprintf("[%s]   - shrinkage plots with %s type", format( Sys.time(), format = "%F %r"), split_type))
   for(matapprox_method in matapprox_methods) {
 
     #' temporary function that plots some summary results of the shrinkage
     temp_plot_shrinkage <- function(cur_plot_folder) {
-       
+
         tryCatch(expr = {
-           
+
            # sparse SVD, rank=3
           # plot_folder = '../plots/replogle/shrink/spSVD03/'
           # shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
@@ -661,7 +675,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
           shrink_df = shrink_res$ebci_res; rm(shrink_res)                             # use the dataframe part of the result
           dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
           plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
-          }, 
+          },
           error = function(e){print(sprintf("Errored at: %s", cur_plot_folder))}
         )
         return(NULL)

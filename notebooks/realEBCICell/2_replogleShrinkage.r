@@ -77,7 +77,6 @@ source('../../utils/matrix_shrinkage.r')
 
 
 
-
 # ======================================================================================================================================
 #                                                                               ========================================================
 #       LOAD:                                                                   ========================================================
@@ -611,14 +610,14 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
         return(shrinkResult)
     }
     if(matapprox_methods_hasranks[[matapprox_method]]) {
-      shrink_results[[matapprox_method]] = list()
+      shrink_results[[split_type]][[matapprox_method]] = list()
       for(r in ranks) {
         dir.create(sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r), showWarnings=TRUE) # rank folder
         shrinkResult = temp_shrink_matrix(
           mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]]$approxmatrices[[r]],
           save_filename = sprintf('%s/shrinkage/%s/%s/rank=%02.f/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method, r)
         )
-        shrink_results[[matapprox_method]][[r]] = shrinkResult$ebci_res
+        shrink_results[[split_type]][[matapprox_method]][[r]] = shrinkResult$ebci_res
 
       } 
     } else {
@@ -627,7 +626,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
         # save_filename = sprintf('%s/shrinkage/a.csv', plot_path)
         save_filename = sprintf('%s/shrinkage/%s/%s/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method)
       )
-      shrink_results[[matapprox_method]] = shrinkResult$ebci_res
+      shrink_results[[split_type]][[matapprox_method]] = shrinkResult$ebci_res
     }
   }
 }

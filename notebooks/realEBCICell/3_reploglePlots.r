@@ -29,6 +29,14 @@ plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of 
 # dir.exists(sceptre_save_path); dir.exists(replogle_save_path); dir.exists(plot_path)
 
 
+# source('../../utils/matrix_shrinkage.r')
+
+source('../../utils/get_ebci_pvals.r')
+
+
+
+
+
 
 saved_approxmatrices = readRDS(sprintf('%s/approxmatrices.rds', replogle_save_path))
 saved_approxmatrices
@@ -84,3 +92,113 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
 }
 
 
+
+
+
+# ======================================================================================================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+#                            +   │─┐                                            ========================================================
+#       EBCI P-VALUES:       |─┐ │ └┐                                           ========================================================
+#                            | ──┘  ────                                        ========================================================
+#                            +---------+                                        ========================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+# ======================================================================================================================================
+print("EBCI P-values: Invert EBCI to p-values")
+
+
+
+calc_ebci_pvals_inner <- function(cur_ebci_params, cur_shrinkage_results) {
+  # sim_distn = 'nb'
+  # split_type = 'samplesplit'
+  # approx_method = 'zeros'
+  # 
+  # maxiter = 10
+  # alpha_threshold = .001
+  # 
+  # cur_ebci_params = ebci_params[[sim_distn]][[split_type]][[approx_method]]
+  # cur_ebci_params
+  # 
+  # 
+  # cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+  # cur_shrinkage_results |> arrange(gene, grna) # dataframe for each #pert * #gene
+  
+  inner_func <- function(thetashrunk, sigma, web) { # This created function will take in (thetashrunk, sigma, web)
+    # call using the previously specified stopping conditions alpha_threshold and maxiter
+    # and call using the current mu2 and kappa estimates
+    
+    tryCatch(expr = {get_ebci_pvals(thetashrunk=thetashrunk, sigma=sigma, web=web, 
+                                    mu2=cur_ebci_params$mu2['estimate'], kappa=cur_ebci_params$kappa['estimate'], 
+                                    alpha_threshold=alpha_threshold, maxiter=maxiter)
+    }, 
+    error = function(e) {NA})
+    
+  }
+  
+  # # loop sequential
+  # ebci_pvals_ = rep(NA, times = nrow(cur_shrinkage_results))
+  # for(i in 1:100) {
+  #   ebci_pvals[i] = inner_func(thetashrunk=cur_shrinkage_results$shrunk_value[i], sigma=cur_shrinkage_results$se[i], web=cur_shrinkage_results$w_eb[i])
+  # }
+  # 
+  # 
+  # 
+  # # mapply sequential
+  # ebci_pvals_ = mapply(FUN = inner_func, 
+  #                      thetashrunk=cur_shrinkage_results$shrunk_value[1:100], 
+  #                      sigma=cur_shrinkage_results$se[1:100], 
+  #                      web=cur_shrinkage_results$w_eb[1:100])
+  
+  
+  
+  # future_mapply parallel
+  ebci_pvals_ = future.apply::future_mapply(FUN = inner_func, 
+                                            thetashrunk=cur_shrinkage_results$shrunk_value, 
+                                            sigma=cur_shrinkage_results$se, 
+                                            web=cur_shrinkage_results$w_eb)
+  
+  return(ebci_pvals_)
+}
+
+
+
+
+
+saved_approxmatrices = readRDS(sprintf('%s/approxmatrices.rds', replogle_save_path))
+saved_approxmatrices
+
+saved_EBCI_shrinkage_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_path))
+saved_EBCI_shrinkage_results
+
+
+
+
+
+# need: ebci_obj fit (estimated parameters)
+#       theta shrunk (shrunk estimate) + web (shrinkage factor)
+
+    for(approx_method in names(ebci_params[[sim_distn]][[split_type]])) {
+      # if there are ranks
+      if(!is.data.frame(shrinkage_results[[sim_distn]][[split_type]][[approx_method]])) { 
+        # print(approx_method)
+        ebci_pvals[[sim_distn]][[split_type]][[approx_method]] = list()
+        for(r in ranks) {
+          cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]][[r]]
+          cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]][[r]]
+          
+          ebci_pvals[[sim_distn]][[split_type]][[approx_method]][[r]] = 
+            calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+        }
+      } else { # if there are no ranks
+        cur_ebci_params       = ebci_params      [[sim_distn]][[split_type]][[approx_method]]
+        cur_shrinkage_results = shrinkage_results[[sim_distn]][[split_type]][[approx_method]]
+        
+        ebci_pvals[[sim_distn]][[split_type]][[approx_method]] =
+          calc_ebci_pvals_inner(cur_ebci_params=cur_ebci_params, cur_shrinkage_results=cur_shrinkage_results)
+      }
+    }
+      
+      
+      
+      
+      
+      

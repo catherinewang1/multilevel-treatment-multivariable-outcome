@@ -44,8 +44,9 @@ plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of 
 ALPHA = .1
 
 
-NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
-# NUM_GENES = 10; NUM_GRNAS = 5           # number of grna-gene pairs to test (Test code is running first)
+# NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
+NUM_GENES = 100; NUM_GRNAS = 15           # number of grna-gene pairs to test (Test code is running first)
+
 NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05 # threshold for cleaning grnas/genes
 
 ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
@@ -54,8 +55,8 @@ ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 # should move this to the top of script
 matapprox_methods          = c('softImpute',      'SVD',      'sparseSVD',      'sparseSVD_autoparams',     'spectralbiclust',      'spectralbiclust_threshold',      'zeros',       'average')
 matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'sparseSVD_autoparams'=TRUE,'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
-ranks = c(1, 3, 5, 10, 20, 30)
-# ranks = c(1, 2)
+# ranks = c(1, 3, 5, 10, 20, 30)
+ranks = c(1, 2)
 # matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
 
 
@@ -243,7 +244,7 @@ if(ORDER_METHOD == 'hierarchichal') {
   
   # K-Means Clustering on left and right svd eigenvecs
   svdres = svd(matscaled)
-  plot(svdres$d)
+  # plot(svdres$d)
   
   k = min(5, NUM_GENES-1, NUM_GRNAS-1) # when testing smaller sets, k cannot be too large
   row_clusters = kmeans(svdres$u[, 1:k], centers = k)$cluster
@@ -478,8 +479,10 @@ if(F) {
 # split_type = 'nosamplesplit' # vs 'samplesplit' 
 
 my_methodParams = list('sparseSVD' = list(type = 'standard', 
-                                          sumabs = .35,  # should be between 0-1, 
+                                          # sumabs = .35,  # should be between 0-1, sumabsu = sqrt(n)*sumabs, sumabsv=sqrt(p)*sumabs
                                           # sumabsu = 4, sumabsv = 4, # between 1 and sqrt(#col or #rows)
+                                          sumabsu = max(1, .35 * sqrt(NUM_GRNAS)), 
+                                          sumabsv = max(1, .35 * sqrt(NUM_GENES)),
                                           niter = 100,
                                           trace = FALSE))
 my_methodParams[['spectralbiclust']] = list(normalization = "bistochastization",

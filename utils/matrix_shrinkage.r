@@ -284,8 +284,12 @@ approx_matrix <- function(mat, method, ranks, save_folder=NULL, save_individual_
         rm(pmd_res); gc(verbose=FALSE)
     } else if(method == 'sparseSVD_autoparams') {
         # Sparse SVD: sparse low rank approximation, use CV to choose hyperparams --------------------------------------
+        # sumabss = seq(.1, .7, len = 10) # default: errors if n or m is too small (bc .1*sqrt(n) < 1=minimum sumabsu/v allowed)
+        min_sumabs = (1 + .2)/min(sqrt(ncol(mat)), sqrt(nrow(mat))) # start at min allowed (a s.t. a*n > 1 and a*m > 1)
+        sumabss = seq(from = min_sumabs, to = .7, length.out = 10)
+        
         cv.out = PMA::PMD.cv(mat, type = 'standard', 
-                             sumabss = seq(0.1, 0.7, len = 10),
+                             sumabss = sumabss,
                              # sumabss = seq(1.2, min(5, sqrt(n), sqrt(m)), len = 10), 
                              nfolds = 5, trace=FALSE)
         pmd_res = PMA::PMD(mat, type = 'standard', sumabsv=cv.out$bestsumabsv, K = max(ranks), trace=FALSE)

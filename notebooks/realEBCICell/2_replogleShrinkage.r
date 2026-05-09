@@ -44,8 +44,8 @@ plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of 
 ALPHA = .1
 
 
-# NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
-NUM_GENES = 100; NUM_GRNAS = 15           # number of grna-gene pairs to test (Test code is running first)
+NUM_GENES = 1000; NUM_GRNAS = 50           # number of grna-gene pairs to test
+# NUM_GENES = 100; NUM_GRNAS = 15           # number of grna-gene pairs to test (Test code is running first)
 
 NA_THRESH_GENE = .05; NA_THRESH_GRNA = .05 # threshold for cleaning grnas/genes
 
@@ -55,11 +55,27 @@ ORDER_METHOD = 'spectralsvd'   # method to create row/col ordering for plots
 # should move this to the top of script
 matapprox_methods          = c('softImpute',      'SVD',      'sparseSVD',      'sparseSVD_autoparams',     'spectralbiclust',      'spectralbiclust_threshold',      'zeros',       'average')
 matapprox_methods_hasranks = c('softImpute'=TRUE, 'SVD'=TRUE, 'sparseSVD'=TRUE, 'sparseSVD_autoparams'=TRUE,'spectralbiclust'=TRUE, 'spectralbiclust_threshold'=TRUE, 'zeros'=FALSE, 'average'=FALSE)
-# ranks = c(1, 3, 5, 10, 20, 30)
-ranks = c(1, 2)
+ranks = c(1, 3, 5, 10, 20, 30)
+# ranks = c(1, 2)
 # matapprox_methods = c('SVD', 'sparseSVD', 'spectralbiclust', 'zeros') # select a subset for testing
 
 
+
+
+# save script parameters
+saveRDS(list(sceptre_save_path=sceptre_save_path,
+             replogle_save_path=replogle_save_path,
+             plot_path=plot_path,
+             ALPHA=ALPHA,
+             NUM_GENES=NUM_GENES,
+             NUM_GRNAS=NUM_GRNAS,
+             NA_THRESH_GENE=NA_THRESH_GENE,
+             NA_THRESH_GRNA=NA_THRESH_GRNA,
+             ORDER_METHOD=ORDER_METHOD,
+             matapprox_methods=matapprox_methods,
+             matapprox_methods_hasranks=matapprox_methods_hasranks,
+             ranks=ranks), 
+        file = sprintf('%s/replogleShrinkageParams.rds', replogle_save_path))
 
 
 # libraries

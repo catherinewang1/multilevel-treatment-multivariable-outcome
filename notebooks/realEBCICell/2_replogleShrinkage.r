@@ -620,7 +620,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
           mat_to_shrink_to = mats_to_shrink_to[[matapprox_method]]$approxmatrices[[r]],
           save_filename = sprintf('%s/shrinkage/%s/%s/rank=%02.f/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method, r)
         )
-        shrink_results[[split_type]][[matapprox_method]][[r]] = shrinkResult$ebci_res
+        shrink_results[[split_type]][[matapprox_method]][[r]] = shrinkResult
 
       } 
     } else {
@@ -629,7 +629,7 @@ for(split_type in c('nosamplesplit', 'samplesplit')) {
         # save_filename = sprintf('%s/shrinkage/a.csv', plot_path)
         save_filename = sprintf('%s/shrinkage/%s/%s/ebci_shrinkage_res.rds', plot_path, split_type, matapprox_method)
       )
-      shrink_results[[split_type]][[matapprox_method]] = shrinkResult$ebci_res
+      shrink_results[[split_type]][[matapprox_method]] = shrinkResult
     }
   }
 }

@@ -1,0 +1,243 @@
+# Use saved replogleShrinkage results to make plots
+# 
+# Run in order:
+# 1_...
+# 2_replogleShrinkage.r
+# 3_reploglePvals.r
+# 
+# Requires previously saved shrinkage results
+# Specifically: <plot_path>/sceptre_obj_[train|test|all].rds 
+# 
+# 
+# 
+# Newly saved plots: <plot_path>/    (moved to separate file)
+#  - mat/
+#  -     estimates/   Estimates (original estimates)
+#  -     matapprox/   Approximating Matrices (matrix Approximations)
+#  -     shrinkage/   Shrinkage Matrices (matrix of Shrunk estimates)
+#  - shrinkage/  
+
+
+suppressPackageStartupMessages(library(future.apply))
+plan(multisession, workers = 20)  # or some other plan
+   
+
+# ======================================================================================================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+#                                                                               ========================================================
+#       SET PARAMETERS                                                          ========================================================
+#                                                                               ========================================================
+#                                                                               ========================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+# ======================================================================================================================================
+# script params
+# sceptre_save_path = '../../saves/sceptre/replogle/' # location where sceptre results are located
+replogle_save_path= '../../saves/replogle/'         # location to save replogle approximations/shrinkage/etc. results
+plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of EBCI analysis on replogle dataset
+# dir.exists(sceptre_save_path); dir.exists(replogle_save_path); dir.exists(plot_path)
+
+
+
+ALPHA_THRESHOLD = .001
+MAXITER = 10
+PARALLEL = TRUE
+
+
+
+
+# source('../../utils/matrix_shrinkage.r')
+
+source('../../utils/get_ebci_pvals.r')
+
+replogleShrinkageParams = readRDS(file = sprintf('%s/replogleShrinkageParams.rds', replogle_save_path))
+
+
+
+
+# saved_approxmatrices = readRDS(sprintf('%s/approxmatrices.rds', replogle_save_path))
+# saved_approxmatrices
+# 
+# saved_EBCI_shrinkage_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_path))
+# saved_EBCI_shrinkage_results
+
+
+#' 
+#' 
+#' # ======================================================================================================================================
+#' # --------------------------------------------------------------------------------------------------------------------------------------
+#' #                            +   │─┐                                            ========================================================
+#' #       SHRINKAGE PLOTS:     |─┐ │ └┐                                           ========================================================
+#' #                            | ──┘  ────                                        ========================================================
+#' #                            +---------+                                        ========================================================
+#' # --------------------------------------------------------------------------------------------------------------------------------------
+#' # ======================================================================================================================================
+#' print("SHRINKAGE PLOTS: plot some shrinkage results")
+#' 
+#' 
+#' # dir.create(sprintf('%s/shrinkage/', plot_path), showWarnings=FALSE) # plots/replogle/EBCI/shrinkage/
+#' 
+#' 
+#' for(split_type in c('nosamplesplit', 'samplesplit')) {  
+#'   print(sprintf("[%s]   - shrinkage plots with %s type", format( Sys.time(), format = "%F %r"), split_type))
+#'   for(matapprox_method in matapprox_methods) {
+#' 
+#'     #' temporary function that plots some summary results of the shrinkage
+#'     temp_plot_shrinkage <- function(cur_plot_folder) {
+#'        
+#'         tryCatch(expr = {
+#'            
+#'            # sparse SVD, rank=3
+#'           # plot_folder = '../plots/replogle/shrink/spSVD03/'
+#'           # shrink_df = read.csv("../saves/replogle/shrinkage/replogle_shrink_sparseSVD03.csv")
+#'           # shrink_df = read.csv(sprintf("%s/ebci_shrinkage_df.csv", cur_plot_folder))
+#'           shrink_res = readRDS(sprintf('%s/ebci_shrinkage_res.rds', cur_plot_folder)) # load in the prev saved ebci shrinkage results
+#'           shrink_df = shrink_res$ebci_res; rm(shrink_res)                             # use the dataframe part of the result
+#'           dir.create(sprintf('%s/points/', cur_plot_folder)); dir.create(sprintf('%s/heatmaps/', cur_plot_folder))
+#'           plot_shrink_results(shrink_df=shrink_df, plot_folder=cur_plot_folder, order_rowscols=T, grna_index=grna_index, gene_index=gene_index, unshrunk_ALPHA=ALPHA)
+#'           }, 
+#'           error = function(e){print(sprintf("Errored at: %s", cur_plot_folder))}
+#'         )
+#'         return(NULL)
+#'     }
+#'     if(matapprox_methods_hasranks[[matapprox_method]]) {
+#'       for(r in ranks) {
+#'         temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, matapprox_method, r))
+#'       }
+#'     } else {
+#'         temp_plot_shrinkage(cur_plot_folder = sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, matapprox_method))
+#'     }
+#'   }
+#' }
+
+
+
+
+
+# ======================================================================================================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+#                            +   │─┐                                            ========================================================
+#       EBCI P-VALUES:       |─┐ │ └┐                                           ========================================================
+#                            | ──┘  ────                                        ========================================================
+#                            +---------+                                        ========================================================
+# --------------------------------------------------------------------------------------------------------------------------------------
+# ======================================================================================================================================
+print("EBCI P-values: Invert EBCI to p-values")
+
+# need: ebci_obj fit (estimated parameters)
+#       theta shrunk (shrunk estimate) + web (shrinkage factor)
+
+
+# saved_approxmatrices = readRDS(sprintf('%s/approxmatrices.rds', replogle_save_path))
+# saved_approxmatrices
+
+# saved_EBCI_shrinkage_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_path))
+# saved_EBCI_shrinkage_results
+# shrink_results = saved_EBCI_shrinkage_results
+
+
+shrink_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds', replogle_save_path))
+
+ebci_pvals = list() # save in same format as shrink_results
+for(split_type in names(shrink_results)) { # samplesplit, nosamplesplit
+  print(sprintf("[%s]   - Calc EBCI pvals with %s split type", format( Sys.time(), format = "%F %r"), split_type))
+  ebci_pvals[[split_type]] = list()
+  for(approx_method in names(shrink_results[[split_type]])) {
+    print(sprintf("[%s]   - Calc EBCI pvals with %s split type, %s method", format( Sys.time(), format = "%F %r"), split_type, approx_method))
+    
+    # if(!('ebci_res' %in% names(shrink_results[[split_type]][[approx_method]]))) { # if there are ranks
+    #   for(r in length(shrink_results[[split_type]][[approx_method]])) {
+    #     
+    #   }
+    # } else {                                                                      # if there are no ranks
+    #   
+    # }
+    
+    #' create a temp function that will calc ebci pvals while handling errors + save results somewhere
+    #' 
+    temp_pval_function <- function(cur_ebci_params, cur_shrinkage_results, save_folder=NULL) {
+      cur_pvals = tryCatch(
+        expr = {
+          get_ebci_pvals_by_shrinkage_results(cur_ebci_params, cur_shrinkage_results, 
+                                              alpha_threshold=ALPHA_THRESHOLD, maxiter=MAXITER, 
+                                              parallel=PARALLEL)
+        },
+        error = function(e) {sprintf(print('      Errored at: %s - %s', split_type, approx_method))}
+      )
+      
+      # No : save the pvals as the entire dataframe so its easier to load (e.g. no reassembling everything)
+      # Yes: save the pvals as one vector (can just append/reassemble later then)
+      if(!is.null(save_folder) && dir.exists(save_folder)) {
+        saveRDS(cur_pvals, sprintf('%s/ebci_pvals.rds', save_folder))
+      }
+      
+      
+      return(cur_pvals)
+    }
+    
+    if(replogleShrinkageParams$matapprox_methods_hasranks[[approx_method]]) { # if there are ranks
+      ebci_pvals[[split_type]][[approx_method]] = list()
+      for(r in replogleShrinkageParams$ranks) {
+        
+        ebci_pvals[[split_type]][[approx_method]][[r]] = temp_pval_function(
+          cur_ebci_params       = shrink_results[[split_type]][[approx_method]][[r]][['ebci_obj']],
+          cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']],
+          save_folder=sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, approx_method, r)
+        )
+        
+      }
+    } else { # if there are no ranks
+      ebci_pvals[[split_type]][[approx_method]] = temp_pval_function(
+        cur_ebci_params       = shrink_results[[split_type]][[approx_method]][['ebci_obj']],
+        cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:100, ],
+        save_folder=sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, approx_method)
+      )
+    }
+  }
+}
+
+
+
+
+saveRDS(object = ebci_pvals, file = sprintf('%s/EBCI_shrinkage_ebcipvals.rds', replogle_save_path))
+      
+
+
+#       EBCI P-VALUES:    ASSEMBLE                                  ========================================================
+# using previously saved shrink_results and ebci_pvals that are nested lists, make a tall dataframe 
+shrink_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds'  , replogle_save_path))
+ebci_pvals     = readRDS(sprintf('%s/EBCI_shrinkage_ebcipvals.rds', replogle_save_path))
+
+df = NULL
+for(split_type in names(shrink_results)) {
+  for(approx_method in names(shrink_results[[split_type]])) {
+    if(replogleShrinkageParams$matapprox_methods_hasranks[[approx_method]]) { # if there are ranks
+      df_ = NULL
+      for(r in replogleShrinkageParams$ranks) {
+        df_ = rbind(df_, 
+                    cbind(shrink_results[[split_type]][[approx_method]][[r]],
+                              ebci_pvals[[split_type]][[approx_method]][[r]]))
+      }
+    } else { # if there are no ranks
+      df_ = cbind(shrink_results[[split_type]][[approx_method]],
+                      ebci_pvals[[split_type]][[approx_method]])
+    }
+    
+    df = rbind(df, df_); rm(df_)
+  }
+}
+
+
+# save as RDS (i think, a lot less space)
+saveRDS(object = df, file = sprintf('%s/EBCI_shrinkage_dataframe.rds', replogle_save_path)) 
+
+
+
+
+
+
+
+
+
+      
+      
+      

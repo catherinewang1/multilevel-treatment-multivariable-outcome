@@ -19,6 +19,10 @@ require(dplyr)
 require(ggplot2)
 ggplot2::theme_set(theme_bw() + theme(plot.title = element_text(hjust = .5)))
 
+
+source('../../utils/get_ebci_pvals.r') # SHOULD BE MOVED TO WHERE THE FILE IS CALLED- WILL HAVE ISSUES WITH RELATIVE PATH
+# e.g. source('../../utils/simEBCICell_utils.R'). but then this source(...) depends on original files location
+
 ########################################################
 ##  Helper FUNCTIONS (e.g. should be private functions)
 ########################################################
@@ -1206,13 +1210,179 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
 fishers_methodf <- function(x) {-2 * sum(log(x, base = exp(1)))}
 fishers_pvalf <- function(s, k) {1 - pchisq(s, df = 2*k)}
 
+
+#' Plot qqplots of the inverted ebci p-values, plot_df is a very tall dataframe. 
+#' Instead, new version should take in dataframe for 1 repetition + dataframe of summary pvals (fisher)
 #' 
-h_plot_ebci_pval <- function(TODO) {
+#'
+#'
+#' # @param plot_df_one (dataframe) that contains the columns: 
+#' @param plot_df (dataframe) a summary dataframe that contains the columns: 
+#' sim_distn    split_type  method rank     gene     grna true_theta         
+#' mse miscoverage_rate nreps   ebci_pvals        meanp fisher_stat count fishers_pval
+#' plot_df contains ebci_pvals from 1 run (ebci_pvals) as well as fishers combined ebci pvals (fishers_pval)
+#' @param ranks (vector) of integers indicating ranks used
+#' @param save_folder (character) path where plots are to be saved at
+#' @param save_ggplot (boolean) whether or not to save the ggplot too 
+h_plot_ebcipval <- function(plot_df, ranks, save_folder, width=10, height=5, save_ggplot=FALSE, point_or_line = 'point') {
+  # check some args
+  if(point_or_line != 'point' && point_or_line != 'line') {
+    print("bad input for point_or_line. needs to be 'point' or 'line'. did not do anything")
+    return(NULL)
+  } 
+  
+  if(FALSE) {
+    # How to combine p-values for each test? eg for pert p --> gene g, there are 20 tests and 20 p-values. How do we combine? I think it is also fine to just append in these qqplots, but we can also try Fisher's method?
+    # checking if Fisher's test will preserve unif(0,1). However, we would get an inflated power for tha alternates, right? eg, bc it is acting like a meta analysis where we have 20x the sample size/experiments
+    df_unif = data.frame(rep = rep(1:100, each = 10),
+                         pval = runif(n = 1000, min = 0, max = 1))
+    fishers_method <- function(x) {-2 * sum(log(x, base = exp(1)))}
+    fishers_pval <- function(s) {1 - pchisq(s, df = 2*10)} #df k = 10????
+    df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)) |> pull(fishers_pval) |> hist()
+    
+    
+    ggplot(df_unif |> group_by(rep) |> summarize(fishers_stat = fishers_method(pval)) |> mutate(fishers_pval = fishers_pval(fishers_stat)), 
+           aes(sample = fishers_pval)) + 
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif)
+  }
+  
+  if(is.null(height)){height=5} # default: height=5, width=8
+  if(is.null(width) ){ width=8}
+  # === prep nice labels and colors ===
+  # === colors
+  methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
+  # === labels
+  # make the ordering for a various number of methodrank levels (even if not used): 
+  # first method according to method_nicenames, then rank NA, 1, 2, ...
+  methodrank_nicenames_order = c()
+  for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    for(cur_rank in c(NA, ranks)) {
+      methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
+    }
+  }
+  
+  
+  
+  
+   # df_unshrunk_glm = plot_df_one |> 
+   #    filter(method == 'zeros' & is.na(rank)) |> # no shrinkage/glm, pick any (would be same)
+   #    mutate(method          = 'unshrunk', 
+   #           rank            = NA,
+   #           shrinkage_point = NA,
+   #           weight          = NA, 
+   #           shrunk_value    = unshrunk_value,
+   #           lower_ci        = NA, # unshrunk_value - qnorm(1 - ALPHA/2) * se,
+   #           upper_ci        = NA, # unshrunk_value + qnorm(1 - ALPHA/2) * se,
+   #           w_eb            = NA
+   #          )
+   # df_unshrunk_glm$ebci_pvals = pnorm(- abs(df_unshrunk_glm$unshrunk_value/df_unshrunk_glm$se))
+   #   
+     
+     
+  isTheta0NamedFunc <- function(b) {if(b){'Null'} else {'Alt'}}
+  
+  # === QQ-Plot: One Run/Repetition (use column ebci_pvals)
+  
+  temp_df = plot_df |> 
+            filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+            mutate(isTheta0 = (true_theta == 0),
+                   isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
+                   sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
+  temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
+  
+  
+  # qqplot: pvals vs unif(0,1) 
+  # want the p-vals to be ~ unif(0,1) [aka on the diagonal] for theta==0, and off diagonal (beneath) for theta!=0 
+  p_ebci_pvals = ggplot(temp_df,
+                        aes(sample = ebci_pvals, group = methodrank, color = methodrank, fill = methodrank)) +
+                geom_abline(aes(slope = 1, intercept = 0)) +
+                geom_qq(distribution = stats::qunif, geom = point_or_line, alpha = .8, linewidth = .8) +
+                coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+                labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+                scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
+                facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+                theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
+
+
+  ggsave(plot = p_ebci_pvals, filename = sprintf('%s/ebci_pvals_one.pdf', save_folder), width = width, height = height) 
+  
+
+  if(save_ggplot) {
+    saveRDS(p_ebci_pvals, sprintf('%s/ggplot_ebci_pvals_one.pdf', save_folder)) # save the ggplot objects (to adjust later as needed)
+  }
+  rm(temp_df)
+  
+  # === QQ-Plot: all repetitions, combined through Fisher's comb  (use column fishers_pval)
+
+  # older way, using very tall dataframe, not prev saved. so these cols should already be in df
+  # plot_df_fishers = plot_df |>  mutate(isTheta0 = (true_theta == 0)) |> group_by(gene, grna, sim_distn, split_type, method, rank, isTheta0) |> summarize(meanp = mean(ebci_pvals), fisher_stat = fishers_methodf(ebci_pvals), count = n())
+  # plot_df_fishers$fishers_pval = mapply(FUN = fishers_pvalf, s= plot_df_fishers$fisher_stat, k = plot_df_fishers$count) 
+  # plot_df_fishers = plot_df_fishers |> 
+  #                       mutate(methodrank = factor(paste0(method, rank), 
+  #                              levels = c("unshrunkallcellsNA",
+  #                                        "unshrunkNA", 
+  #                                        "matcomp_linearregNA", 
+  #                                        paste0("matcomp_softImpute", ranks), 
+  #                                        paste0("matdecomp_svd", ranks),
+  #                                        paste0("matdecomp_sparsesvd", ranks), 
+  #                                        paste0("spectralbiclust", ranks), 
+  #                                        paste0("spectralbiclust_threshold", ranks), 
+  #                                        "zerosNA", 
+  #                                        "averageNA"))) |>
+  #                      mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0))
+
+
+  temp_df = plot_df |> 
+            filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+            mutate(isTheta0 = (true_theta == 0),
+                   isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
+                   sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+  temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
+  temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
+    
+
+  # at least this fishers combined pval should tell us for nulls?
+  p_ebci_pvals = ggplot(temp_df,  aes(sample = fishers_pval, group = methodrank, color = methodrank, fill = methodrank)) +
+      geom_abline(aes(slope = 1, intercept = 0)) +
+      geom_qq(distribution = stats::qunif, geom = point_or_line, alpha = .8, linewidth = .8) +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      labs(title = 'QQ-plot of Fisher Combined Inverted EBCI p-values vs Unif(0,1)') + 
+      scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+      theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
+  
+  
+  ggsave(plot = p_ebci_pvals, filename = sprintf('%s/ebci_pvals_fishers.pdf', save_folder), width = width, height = height) 
+
+  if(save_ggplot) {
+    saveRDS(p_ebci_pvals, sprintf('%s/ggplot_ebci_pvals_fishers.pdf', save_folder)) # save the ggplot objects (to adjust later as needed)
+  }
+
+  rm(temp_df)
 
 
 
+  return(NULL)
 }
 
+
+
+#' Plot the individual matrices saved in sim_results.rds object
+#' save in <save_folder>/mat/name_of_plot.(pdf|png)
+#' BE CAREFUL OF LONG NAMES. ERRORS WHEN NAME IS TOO LONG (on local windows laptop)
+#' This include: 
+#'   - Theta
+#'   - Estimated Effects
+#'   - Approximated Matrices
+#'   - Shrunk Estimates
+#' @param sim_results (list) object with saved results
+#' @param save_folder (character) path to folder to save plots at
+#' @param color_limits (vector) of length 2 for the color limits of these matrix plots
+#' @param return NULL
 h5_2_2_plot_matrix_individual <- function(sim_results, save_folder, color_limits=NULL) {
     dir.create(sprintf('%s/mat/', save_folder))
     if(is.null(color_limits)) {
@@ -1303,8 +1473,8 @@ h5_2_2_plot_matrix_individual <- function(sim_results, save_folder, color_limits
           
           pl = my_display_matrix(res_mat) + 
                labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', ')' ))
-          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname), width = 8, height = 8)
-          ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname),
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrk_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname), width = 8, height = 8)
+          ggsave(plot = pl, filename = sprintf('%s/mat/shrk_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname),
                  width = 8, height = 8, units = 'in', dpi = 300)
         } else {
           for(r in sim_results$ranks) {
@@ -1313,8 +1483,8 @@ h5_2_2_plot_matrix_individual <- function(sim_results, save_folder, color_limits
             
             pl = my_display_matrix(res_mat) + 
                  labs(title = paste0('Shrunk Estimates (', splittype, ' ', approx_method, ' ', r, ')' ))
-            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r), width = 8, height = 8)
-            ggsave(plot = pl, filename = sprintf('%s/mat/shrunk_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r),
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrk_%s_%s_%s_%s.pdf', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r), width = 8, height = 8)
+            ggsave(plot = pl, filename = sprintf('%s/mat/shrk_%s_%s_%s_%s.png', save_folder, substr(est_method, 1, 2), splittype_short, approx_method_shortname, r),
                    width = 8, height = 8, units = 'in', dpi = 300)
           }
         }
@@ -1839,7 +2009,6 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
       sim_results = readRDS(sim_results_filenames[1])      
     }
     h5_2_2_plot_matrix_individual(sim_results=sim_results, save_folder=save_folder, color_limits=plot_specs$matrix_individual$color_limits)
-    rm(sim_results)
   }
 
   # 5.3 mse
@@ -2309,76 +2478,79 @@ make_plots_from_save <- function(sim_results_filenames, save_folder, which_plots
 # === EBCI PVAL FUNCTIONS ===
 # =================================
 
-#' description: Create the pseudo p-value: Find the smallest alpha that does not cover 0 OR the largest alpha that still covers 0
-#'  The CI is shrunk estimate +- cva * w_eb * sigma
-#'  because of the way we call the function, we have our original estimate thetahat and shrinkagepoint
-#'  and we shrink (thetahat - shrinkagepoint) towards 0 always to then get thetaeb(this is because we have diff shrinkage points for all the points)
-#'  and then we add back the shrinkage point shrunkpoint = thetaeb + shrinkagepoint <-- this is the value to to input into this function, because the CI is centered around this point
-#' @param thetashrunk (numeric) shrunkpoint = thetaeb + shrinkagepoint where is the thetaeb is the (thetahat - shrinkagepoint) shrunk towards 0
-#' @param sigma (numeric)
-#' @param web (numeric) shrinkage factor from ebci object result
-#' @param mu2 (numeric) estimated mu2 from ebci object result
-#' @param kappa (numeric) estimated kappa from ebci object result
-#' @param threshold (numeric) stop condition: perform until alpha's changes are < threshold
-#'                            this is the max mis calc error for the pseudo-pval (if MAX_ITER is not reached)
-#' @param maxiter (numeric) stop condition: maximum number of iterations to perform
-#' 
-#' @returns pseudopval (numeric) \in [0,1]
-#' 
-#' 
-get_ebci_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
-                                   alpha_threshold, maxiter) {
-  # # params for running 
-  # MAX_ITER_FOR_P = 20    # limit the number of iterations
-  # # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
-  # alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
-  # # estimate from overall ebci fit
-  # my_mu2 = ebci_obj$mu2[['estimate']]
-  # my_kappa = ebci_obj$kappa[['estimate']]
-  # # params for each sample i 
-  # my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
-  # my_sigma = 1 # initial estimate standard error
-  # my_web = .3   # shrinkage factor
-
-  # helpful calcs to just perform once
-  sigma2_mu2 = sigma^2 / mu2  # = m2 in cva function input
-  theta_websigma = abs(thetashrunk) / (web * sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
 
 
+# #' MOVED TO utils/ebci_pvals.r'
+# #' description: Create the pseudo p-value: Find the smallest alpha that does not cover 0 OR the largest alpha that still covers 0
+# #'  The CI is shrunk estimate +- cva * w_eb * sigma
+# #'  because of the way we call the function, we have our original estimate thetahat and shrinkagepoint
+# #'  and we shrink (thetahat - shrinkagepoint) towards 0 always to then get thetaeb(this is because we have diff shrinkage points for all the points)
+# #'  and then we add back the shrinkage point shrunkpoint = thetaeb + shrinkagepoint <-- this is the value to to input into this function, because the CI is centered around this point
+# #' @param thetashrunk (numeric) shrunkpoint = thetaeb + shrinkagepoint where is the thetaeb is the (thetahat - shrinkagepoint) shrunk towards 0
+# #' @param sigma (numeric)
+# #' @param web (numeric) shrinkage factor from ebci object result
+# #' @param mu2 (numeric) estimated mu2 from ebci object result
+# #' @param kappa (numeric) estimated kappa from ebci object result
+# #' @param threshold (numeric) stop condition: perform until alpha's changes are < threshold
+# #'                            this is the max mis calc error for the pseudo-pval (if MAX_ITER is not reached)
+# #' @param maxiter (numeric) stop condition: maximum number of iterations to perform
+# #' 
+# #' @returns pseudopval (numeric) \in [0,1]
+# #' 
+# #' 
+# get_ebci_pvals <- function(thetashrunk, sigma, web, mu2, kappa,
+#                                    alpha_threshold, maxiter) {
+#   # # params for running 
+#   # MAX_ITER_FOR_P = 20    # limit the number of iterations
+#   # # distance_threshold  = .001 # distance between (my_theta / (my_web * my_sigma)) and cva_pseudop(m2, kappa)
+#   # alpha_threshold = .0001 # perform until changes in alpha are small (ie this is the rounding of the p-value, there will be at most log2(1/alpha_threshold) iterations)
+#   # # estimate from overall ebci fit
+#   # my_mu2 = ebci_obj$mu2[['estimate']]
+#   # my_kappa = ebci_obj$kappa[['estimate']]
+#   # # params for each sample i 
+#   # my_theta = .2 # shrunk estimate: should be ebci_obj$df$th_eb + shrinkage_point (e.g. not the 'raw' the_eb)
+#   # my_sigma = 1 # initial estimate standard error
+#   # my_web = .3   # shrinkage factor
 
-  iter = 1
-  cur_min = 0; cur_max = 1 # range to search for pseudo p-value
-  cur_alpha = .5 # start in the middle
-  track_alphas = c(cur_alpha)
-  # distance = 10000
-  alpha_change = 1
-  # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
-  while(alpha_change > alpha_threshold & iter <= maxiter) { # by alpha/p-value change
-   cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = kappa, check=FALSE, alpha = cur_alpha)$cv
-   # print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
-   #                iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
-   
-   # check if 0 is in CI with cur_alpha
-   if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
-     cur_min = cur_alpha  
-     new_alpha = (cur_alpha + cur_max) / 2
-   } else { # 0 \not\in CI: decrease alpha to make CI larger
-     cur_max = cur_alpha
-     new_alpha = (cur_alpha + cur_min) / 2
-   }
-   
-   
-   alpha_change = abs(new_alpha - cur_alpha)
-   cur_alpha = new_alpha
-   
-   track_alphas = c(track_alphas, cur_alpha)
-   
-   # distance = theta_websigma - cur_cva_alpha
-   iter = iter + 1
-  }
+#   # helpful calcs to just perform once
+#   sigma2_mu2 = sigma^2 / mu2  # = m2 in cva function input
+#   theta_websigma = abs(thetashrunk) / (web * sigma) # |theta| / (w_eb * sigma)   normalized estimate, always > 0
 
-  return(cur_alpha)
-}
+
+
+#   iter = 1
+#   cur_min = 0; cur_max = 1 # range to search for pseudo p-value
+#   cur_alpha = .5 # start in the middle
+#   track_alphas = c(cur_alpha)
+#   # distance = 10000
+#   alpha_change = 1
+#   # while(distance > distance_threshold & iter <= MAX_ITER_FOR_P) { # by theta_websigma - cur_cva_alpha
+#   while(alpha_change > alpha_threshold & iter <= maxiter) { # by alpha/p-value change
+#    cur_cva_alpha = ebci::cva(m2 = sigma2_mu2, kappa = kappa, check=FALSE, alpha = cur_alpha)$cv
+#    # print(sprintf("%d: %.8f [%.2f, %.2f]: %.2f vs %.2f", 
+#    #                iter, cur_alpha, cur_min, cur_max, theta_websigma, cur_cva_alpha))
+   
+#    # check if 0 is in CI with cur_alpha
+#    if(theta_websigma - cur_cva_alpha < 0) { # 0 \in CI: increase alpha to make CI smaller
+#      cur_min = cur_alpha  
+#      new_alpha = (cur_alpha + cur_max) / 2
+#    } else { # 0 \not\in CI: decrease alpha to make CI larger
+#      cur_max = cur_alpha
+#      new_alpha = (cur_alpha + cur_min) / 2
+#    }
+   
+   
+#    alpha_change = abs(new_alpha - cur_alpha)
+#    cur_alpha = new_alpha
+   
+#    track_alphas = c(track_alphas, cur_alpha)
+   
+#    # distance = theta_websigma - cur_cva_alpha
+#    iter = iter + 1
+#   }
+
+#   return(cur_alpha)
+# }
 
 
 

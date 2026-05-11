@@ -20,7 +20,7 @@
 
 suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 20)  # or some other plan
-plan(sequential)
+# plan(sequential)
    
 
 # ======================================================================================================================================
@@ -181,7 +181,7 @@ for(split_type in names(shrink_results)) { # samplesplit, nosamplesplit
         
         ebci_pvals[[split_type]][[approx_method]][[r]] = temp_pval_function(
           cur_ebci_params       = shrink_results[[split_type]][[approx_method]][[r]][['ebci_obj']],
-          cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']][1:10, ],
+          cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']], #[1:10, ],
           save_folder=sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, approx_method, r)
         )
         
@@ -189,7 +189,7 @@ for(split_type in names(shrink_results)) { # samplesplit, nosamplesplit
     } else { # if there are no ranks
       ebci_pvals[[split_type]][[approx_method]] = temp_pval_function(
         cur_ebci_params       = shrink_results[[split_type]][[approx_method]][['ebci_obj']],
-        cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:10, ],
+        cur_shrinkage_results = shrink_results[[split_type]][[approx_method]], #[1:10, ],
         save_folder=sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, approx_method)
       )
     }
@@ -220,14 +220,14 @@ for(split_type in names(shrink_results)) {
     if(replogleShrinkageParams$matapprox_methods_hasranks[[approx_method]]) { # if there are ranks
       df_ = NULL
       for(r in replogleShrinkageParams$ranks) {
-        df_r = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']][1:10, ] |>
+        df_r = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']] |> # [1:10, ] |>
                dplyr::select(dplyr::all_of(selected_colnames)) |>
                dplyr::mutate(split_type=split_type, approx_method=approx_method, rank=r, .after = 'gene')
         df_r$ebci_pvals = ebci_pvals[[split_type]][[approx_method]][[r]]
         df_ = rbind(df_, df_r); rm(df_r)
       }
     } else { # if there are no ranks
-      df_ = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:10, ] |>
+      df_ = shrink_results[[split_type]][[approx_method]][['ebci_res']] |> # [1:10, ] |>
             dplyr::select(dplyr::all_of(selected_colnames)) |>
             dplyr::mutate(split_type=split_type, approx_method=approx_method, rank=NA, .after = 'gene')
       

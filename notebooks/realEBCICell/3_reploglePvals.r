@@ -20,6 +20,7 @@
 
 suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 20)  # or some other plan
+plan(sequential)
    
 
 # ======================================================================================================================================
@@ -180,7 +181,7 @@ for(split_type in names(shrink_results)) { # samplesplit, nosamplesplit
         
         ebci_pvals[[split_type]][[approx_method]][[r]] = temp_pval_function(
           cur_ebci_params       = shrink_results[[split_type]][[approx_method]][[r]][['ebci_obj']],
-          cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']],
+          cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']][1:10, ],
           save_folder=sprintf('%s/shrinkage/%s/%s/rank=%02.f/', plot_path, split_type, approx_method, r)
         )
         
@@ -188,7 +189,7 @@ for(split_type in names(shrink_results)) { # samplesplit, nosamplesplit
     } else { # if there are no ranks
       ebci_pvals[[split_type]][[approx_method]] = temp_pval_function(
         cur_ebci_params       = shrink_results[[split_type]][[approx_method]][['ebci_obj']],
-        cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:100, ],
+        cur_shrinkage_results = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:10, ],
         save_folder=sprintf('%s/shrinkage/%s/%s/', plot_path, split_type, approx_method)
       )
     }
@@ -204,31 +205,65 @@ saveRDS(object = ebci_pvals, file = sprintf('%s/EBCI_shrinkage_ebcipvals.rds', r
 
 #       EBCI P-VALUES:    ASSEMBLE                                  ========================================================
 # using previously saved shrink_results and ebci_pvals that are nested lists, make a tall dataframe 
+print('Assemble p-values')
+
 shrink_results = readRDS(sprintf('%s/EBCI_shrinkage_results.rds'  , replogle_save_path))
 ebci_pvals     = readRDS(sprintf('%s/EBCI_shrinkage_ebcipvals.rds', replogle_save_path))
 
+selected_colnames = c('grna', 'gene', 'shrinkage_point', 'shrunk_value', 'lower_ci', 'upper_ci', 'w_eb')
+
 df = NULL
 for(split_type in names(shrink_results)) {
+  print(sprintf('  %s', split_type))
   for(approx_method in names(shrink_results[[split_type]])) {
+    print(sprintf('    -%s', approx_method))
     if(replogleShrinkageParams$matapprox_methods_hasranks[[approx_method]]) { # if there are ranks
       df_ = NULL
       for(r in replogleShrinkageParams$ranks) {
-        df_ = rbind(df_, 
-                    cbind(shrink_results[[split_type]][[approx_method]][[r]],
-                              ebci_pvals[[split_type]][[approx_method]][[r]]))
+        df_r = shrink_results[[split_type]][[approx_method]][[r]][['ebci_res']][1:10, ] |>
+               dplyr::select(dplyr::all_of(selected_colnames)) |>
+               dplyr::mutate(split_type=split_type, approx_method=approx_method, rank=r, .after = 'gene')
+        df_r$ebci_pvals = ebci_pvals[[split_type]][[approx_method]][[r]]
+        df_ = rbind(df_, df_r); rm(df_r)
       }
     } else { # if there are no ranks
-      df_ = cbind(shrink_results[[split_type]][[approx_method]],
-                      ebci_pvals[[split_type]][[approx_method]])
+      df_ = shrink_results[[split_type]][[approx_method]][['ebci_res']][1:10, ] |>
+            dplyr::select(dplyr::all_of(selected_colnames)) |>
+            dplyr::mutate(split_type=split_type, approx_method=approx_method, rank=NA, .after = 'gene')
+      
+      df_$ebci_pvals = ebci_pvals[[split_type]][[approx_method]]
     }
     
     df = rbind(df, df_); rm(df_)
   }
 }
 
+df = df |> dplyr::mutate(gene          = as.factor(gene), 
+                         grna          = as.factor(grna),
+                         split_type    = as.factor(split_type), 
+                         approx_method = as.factor(approx_method))
+
+
+df_unshrunk =  shrink_results[['nosamplesplit']][['zeros']][['ebci_res']] |>
+               dplyr::select(grna, gene, unshrunk_value, se, weight)
+df_unshrunk = df_unshrunk |> dplyr::mutate(gene = as.factor(gene), grna = as.factor(grna))
+
 
 # save as RDS (i think, a lot less space)
-saveRDS(object = df, file = sprintf('%s/EBCI_shrinkage_dataframe.rds', replogle_save_path)) 
+saveRDS(object = df,          file = sprintf('%s/EBCI_shrinkage_dataframe.rds', replogle_save_path)) 
+saveRDS(object = df_unshrunk, file = sprintf('%s/EBCI_unshrunk_dataframe.rds', replogle_save_path)) 
+
+# a = readRDS(sprintf('%s/EBCI_shrinkage_dataframe.rds', replogle_save_path))
+# b = readRDS(sprintf('%s/EBCI_unshrunk_dataframe.rds', replogle_save_path))
+
+# # does converting grna, gene (characters) into factors decrease size? yes
+# object.size(df_unshrunk)  # 2066952 bytes
+# df_unshrunk = df_unshrunk |> dplyr::mutate(gene = as.factor(gene), grna = as.factor(grna))
+# object.size(df_unshrunk)  # 1676424 bytes
+
+
+
+
 
 
 

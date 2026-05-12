@@ -25,7 +25,7 @@ for(i in 1:length(files_to_copy)) {
   cur_file   = files_to_copy[i]
   cur_folder = dir_to_create[i]
   print(sprintf('%s/final/selAllPlots/%s', plot_path, cur_folder))
-  dir.create(sprintf('%s/final/selAllPlots/%s', plot_path, cur_folder), recursive=TRUE)
+  # dir.create(sprintf('%s/final/selAllPlots/%s', plot_path, cur_folder), recursive=TRUE)
   
   
   

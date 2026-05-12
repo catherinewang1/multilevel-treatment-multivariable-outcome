@@ -27,10 +27,14 @@ for(i in 1:length(files_to_copy)) {
   print(sprintf('%s/final/selAllPlots/%s', plot_path, cur_folder))
   dir.create(sprintf('%s/final/selAllPlots/%s', plot_path, cur_folder), recursive=TRUE)
   
+  
+  
+  
   file.copy(from = cur_file, 
-            to = sprintf('%s/final/selAllPlots/%s/%s', 
-                         plot_path, cur_folder, 
-                         substr(cur_file, nchar(cur_file)-6, nchar(cur_file))), 
+            to = sprintf('%s/final/selAllPlots/%s%s', 
+                         plot_path,                                                 # original plot path
+                         gsub(pattern = '/', replacement = '_', x = cur_folder), # no sub directories, just name w _ between
+                         substr(cur_file, nchar(cur_file)-6, nchar(cur_file))),     # preserve pdf or png
             overwrite = TRUE)
   
   

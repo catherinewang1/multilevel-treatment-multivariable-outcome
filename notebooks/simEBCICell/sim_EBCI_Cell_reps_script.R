@@ -28,7 +28,7 @@ plan(multisession, workers = 20)
 # our code
 source('../../utils/matrix_shrinkage.r')
 source('../../utils/matrixPrior_utils.R') # may have a different 'create blocky matrix' version
-
+source('../../utils/matrix_approx_fns.r') # should move more functions here for general purpose
 source('../../utils/simEBCICell_utils.R') 
 
 

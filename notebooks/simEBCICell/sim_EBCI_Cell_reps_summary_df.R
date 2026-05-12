@@ -18,7 +18,9 @@ CREATE_SUMMARY_DATAFRAME          = TRUE # create overall summary dataframe or n
 
 
 
-setting_names = c('A', 'E')
+# setting_names = c('A', 'E')
+setting_names = c('A')
+# setting_names = c('E')
 
 
 if(CREATE_INDIVIDUAL_PVAL_DATAFRAMES) {

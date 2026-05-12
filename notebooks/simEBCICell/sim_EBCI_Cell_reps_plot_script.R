@@ -16,12 +16,14 @@ source('../../utils/simEBCICell_utils.R')
 
 
 overall_save_folder = '../../plots/simEBCICell/'
-setting_names = c('A', 'E')
+# setting_names = c('A', 'E')
+setting_names = c('A')
+# setting_names = c('E')
 
 
 CREATE_PLOTS_INDIVIDUAL      = TRUE # create these plots or not
 CREATE_PLOTS_OVERALL         = TRUE # create these plots or not
-
+SAMPLE_N = FALSE # sample for p-values plot
 NUMBER_OF_INDIVIDUAL_PLOTS = 3
 
 
@@ -85,8 +87,19 @@ if(CREATE_PLOTS_OVERALL) {
                    height=7, width=12, 
                    save_ggplot=FALSE, plot_df_is_summ=TRUE)
     
+    # the full plot is too large... sample 100 from each type??
     
-    
+    if(SAMPLE_N) {
+      set.seed(1234)
+      summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(2000) # E: 25000 max (grna-gene pairs)
+    } else {
+      summary_df_sampled = summary_df
+    } 
+    h_plot_ebcipval(plot_df = summary_df_sampled, 
+                    ranks = sim_results$ranks, 
+                    save_folder = sprintf('%s%s/', overall_save_folder, setting_name), 
+                    height=6, width=14, save_ggplot=FALSE, 
+                    point_or_line = 'line')
     
     # methodrank_colors = create_color_pallete_nicenames(ranks = sim_results$ranks)
     # # make the ordering for a various number of methodrank levels (even if not used): first method according to method_nicenames, then rank NA, 1, 2, ...

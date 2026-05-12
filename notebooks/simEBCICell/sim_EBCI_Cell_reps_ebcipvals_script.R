@@ -10,14 +10,18 @@
 suppressPackageStartupMessages(library(future.apply))
 plan(multisession, workers = 20)  # or some other plan
 source('../../utils/simEBCICell_utils.R') 
-
+source('../../utils/get_ebci_pvals.r')
 
 
 overall_save_folder = '../../plots/simEBCICell/'
 
-# ============================== SETTING A & E =========================================================
+# setting_names = c('A', 'E')
+setting_names = c('A')
+# setting_names = c('E')
 
-for(setting_name in c('A', 'E')) {
+# ============================== FOR CHOSEN SETTINGS =========================================================
+
+for(setting_name in setting_names) {
   
   # list all the repetition directory names (likely just 1, ...., 20)
   save_files_rep = list.files(path = sprintf('%s/%s', overall_save_folder, setting_name) , 

@@ -1782,6 +1782,32 @@ h_plot_ebcipval_tall <- function(plot_df, ranks, save_folder) {
   
 }
 
+```
+
+
+
+
+
+
+
+```{r}
+
+
+source('../../utils/simEBCICell_utils.R') 
+
+# testing/checking get_ebci_average_pvals
+setting_name = 'A'
+save_folder = sprintf('../../plots/simEBCICell/%s', setting_name)
+
+
+sim_results = readRDS(sprintf('%s/1/sim_results.rds', save_folder))
+ranks = sim_results$ranks; rm(sim_results)
+
+
+# plot_df_one     = readRDS(sprintf('%s/1/sim_result_ebci_pvals_df.rds', save_folder))
+plot_df_summary = readRDS(sprintf('%s/sim_result_ebci_summary.rds', save_folder)) # repetition, sim_distn, split_type, method
+
+
 
 
 #' Plot qqplots of the inverted ebci p-values, plot_df is a very tall dataframe. 
@@ -1789,11 +1815,14 @@ h_plot_ebcipval_tall <- function(plot_df, ranks, save_folder) {
 #' 
 #'
 #'
-#' @param plot_df_one (dataframe) that contains the columns: 
+#' # @param plot_df_one (dataframe) that contains the columns: 
 #' @param plot_df_summary (dataframe) that contains the columns: 
+#' sim_distn    split_type  method rank     gene     grna true_theta         
+#' mse miscoverage_rate nreps   ebci_pvals        meanp fisher_stat count fishers_pval
+#' plot_df_summary contains ebci_pvals from 1 run (ebci_pvals) as well as fishers combined ebci pvals (fishers_pval)
 #' @param ranks (vector) of integers indicating ranks used
 #' @param save_folder (character) path where plots are to be saved at
-h_plot_ebcipval <- function(plot_df_one, plot_df_summary, ranks, save_folder, height=NULL, width=NULL, save_ggplot=NULL) {
+h_plot_ebcipval <- function(plot_df_summary, ranks, save_folder, height=NULL, width=NULL, save_ggplot=NULL) {
 
 
   
@@ -1827,42 +1856,48 @@ h_plot_ebcipval <- function(plot_df_one, plot_df_summary, ranks, save_folder, he
       methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
     }
   }
-      
   
+  
+  
+  
+   # df_unshrunk_glm = plot_df_one |> 
+   #    filter(method == 'zeros' & is.na(rank)) |> # no shrinkage/glm, pick any (would be same)
+   #    mutate(method          = 'unshrunk', 
+   #           rank            = NA,
+   #           shrinkage_point = NA,
+   #           weight          = NA, 
+   #           shrunk_value    = unshrunk_value,
+   #           lower_ci        = NA, # unshrunk_value - qnorm(1 - ALPHA/2) * se,
+   #           upper_ci        = NA, # unshrunk_value + qnorm(1 - ALPHA/2) * se,
+   #           w_eb            = NA
+   #          )
+   # df_unshrunk_glm$ebci_pvals = pnorm(- abs(df_unshrunk_glm$unshrunk_value/df_unshrunk_glm$se))
+   #   
+     
+     
   isTheta0NamedFunc <- function(b) {if(b){'Null'} else {'Alt'}}
   
-  # === QQ-Plot: One Run/Repetition
+  # === QQ-Plot: One Run/Repetition (use column ebci_pvals)
   
-  temp_df = plot_df_one |> 
+  temp_df = plot_df_summary |> 
+            filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
             mutate(isTheta0 = (true_theta == 0),
                    isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
                    sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
                    split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
-  temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
-  temp_df$methodrank = factor(plot_df_summ$methodrank, levels = methodrank_nicenames_order)
+  temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
+  temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
   
   
   # qqplot: pvals vs unif(0,1) 
   # want the p-vals to be ~ unif(0,1) [aka on the diagonal] for theta==0, and off diagonal (beneath) for theta!=0 
-  p_ebci_pvals = ggplot(plot_df_one |>
-                          mutate(isTheta0 = (true_theta == 0)) |> 
-                          mutate(methodrank = factor(paste0(method, rank), 
-                                 levels = c("unshrunkallcellsNA",
-                                           "unshrunkNA", 
-                                           "matcomp_linearregNA", 
-                                           paste0("matcomp_softImpute", ranks), 
-                                           paste0("matdecomp_svd", ranks),
-                                           paste0("matdecomp_sparsesvd", ranks), 
-                                           paste0("spectralbiclust", ranks), 
-                                           paste0("spectralbiclust_threshold", ranks), 
-                                           "zerosNA", 
-                                           "averageNA"))) |>
-                           mutate(isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0)),
+  p_ebci_pvals = ggplot(temp_df,
                         aes(sample = ebci_pvals, group = methodrank, color = methodrank, fill = methodrank)) +
                 geom_abline(aes(slope = 1, intercept = 0)) +
-                geom_qq(distribution = stats::qunif) +
+                geom_qq(distribution = stats::qunif, alpha = .5) +
                 coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
                 labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+                scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
                 facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
                 theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), panel.grid.major.x = element_blank())
   
@@ -1870,10 +1905,8 @@ h_plot_ebcipval <- function(plot_df_one, plot_df_summary, ranks, save_folder, he
   
   rm(temp_df)
   
-  # === QQ-Plot: all repetitions, combined through Fisher's comb
-  
-  fishers_methodf <- function(x) {-2 * sum(log(x, base = exp(1)))}
-  fishers_pvalf <- function(s, k) {1 - pchisq(s, df = 2*k)}
+  # === QQ-Plot: all repetitions, combined through Fisher's comb  (use column fishers_pval)
+
   
   plot_df_fishers = plot_df |>  mutate(isTheta0 = (true_theta == 0)) |> group_by(gene, grna, sim_distn, split_type, method, rank, isTheta0) |> summarize(meanp = mean(ebci_pvals), fisher_stat = fishers_methodf(ebci_pvals), count = n())
   plot_df_fishers$fishers_pval = mapply(FUN = fishers_pvalf, s= plot_df_fishers$fisher_stat, k = plot_df_fishers$count) 
@@ -3182,4 +3215,79 @@ sim_df$A %*% matrix(c(2), nrow = 1, ncol = 1) # will be larger matrix w mult tre
 }
 
 ```
+
+
+
+```{r, fig.height=6, fig.width=12}
+# load and plot mse for just some subset of sim_results (when ebcipvals weren't calc yet)
+source('../../utils/simEBCICell_utils.R') 
+
+# testing/checking get_ebci_average_pvals
+setting_name = 'E'
+
+overall_save_folder = '../../plots/simEBCICell/'
+
+
+
+  
+# list all the repetition directory names (likely just 1, ...., 20)
+save_files_rep = list.files(path = sprintf('%s/%s', overall_save_folder, setting_name) , 
+                            pattern = 'sim_results.rds', recursive=TRUE, full.names = TRUE)
+save_folder_rep = sub(pattern = 'sim_results.rds', replacement = '', x = save_files_rep) # just the folder names
+plot_df = NULL
+for(cur_save_folder_rep in save_folder_rep[1:3]) {
+  print(sprintf('[%s] %s', Sys.time(), cur_save_folder_rep))
+  # create and save ebci pvals for each of the repetitions
+  
+
+  tryCatch(expr = {
+    sim_results = readRDS(sprintf('%s/sim_results.rds', cur_save_folder_rep))
+    
+    plot_df_ = h5_0_create_plot_df(shrinkage_results=sim_results$shrinkage_results, allcells_results=sim_results$allcells_results, ranks=sim_results$ranks, ALPHA=sim_results$ALPHA)
+    plot_df_$filename = cur_save_folder_rep
+    plot_df = rbind(plot_df, plot_df_); rm(plot_df_)
+    
+    
+  },  error = function(e) {
+    print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
+  })
+}
+
+
+
+
+plot_df_summ = plot_df |> 
+        filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
+        group_by(sim_distn, split_type, method, rank) |> 
+        summarize(mse = mean((shrunk_value - true_theta)^2), .groups = 'drop') |> 
+        mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+plot_df_summ$methodrank = mapply(FUN = methodrank_nicenames, method_name =  plot_df_summ$method, rank_ = plot_df_summ$rank) |> unname()
+
+
+
+ggplot() +
+      geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
+      # geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
+      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+                 # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
+                 labeller = label_value
+                 ) +
+      # scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
+      labs(title = 'MSE', x = 'MSE', y = 'Method', fill = 'Method') +
+      scale_x_continuous(expand = expansion(mult = c(0, .05))) +
+      scale_y_discrete(limits = rev) +
+      theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+            panel.grid.minor.y  = element_blank(), 
+            panel.grid.major.y  = element_blank(),
+            panel.grid.major.x  = element_blank(), 
+            strip.background = element_rect(fill = NA), 
+            axis.ticks.y = element_blank())
+
+
+
+
+```
+
 

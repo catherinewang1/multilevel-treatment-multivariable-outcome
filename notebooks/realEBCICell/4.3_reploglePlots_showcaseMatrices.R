@@ -52,10 +52,11 @@ myBlue = colorRampPalette(RColorBrewer::brewer.pal(n = 7, name = "RdBu"))(7)[7]
 
 
 # Select some settings to showcase:
-showcaseSettings = data.frame(matrix(
+selectedSettings = data.frame(matrix(
   c(# settings for sample splitting
     'samplesplit',                         'SVD',  3,
     'samplesplit',                   'sparseSVD', 20,
+    'samplesplit',        'sparseSVD_autoparams', 20,
     'samplesplit',                  'softImpute',  5,
     'samplesplit',             'spectralbiclust',  5,
     'samplesplit',   'spectralbiclust_threshold',  5,
@@ -64,15 +65,16 @@ showcaseSettings = data.frame(matrix(
     # settings for no sample splitting
     'nosamplesplit',                         'SVD',  3,
     'nosamplesplit',                   'sparseSVD', 20,
+    'nosamplesplit',        'sparseSVD_autoparams', 20,
     'nosamplesplit',                  'softImpute',  5,
     'nosamplesplit',             'spectralbiclust',  5,
     'nosamplesplit',   'spectralbiclust_threshold',  5,
     'nosamplesplit',                     'average', NA,
     'nosamplesplit',                       'zeros', NA),
   ncol = 3, byrow = TRUE)) 
-colnames(showcaseSettings) = c('split_type', 'approx_method', 'rank')
-showcaseSettings$rank = as.numeric(showcaseSettings$rank)
-showcaseSettings
+colnames(selectedSettings) = c('split_type', 'approx_method', 'rank')
+selectedSettings$rank = as.numeric(selectedSettings$rank)
+selectedSettings
 
 
 # /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -289,24 +291,24 @@ final_plot_matrix(plot_df = df_unshrunk |> filter(grna_idx <= NUM_GRNA_DISPLAY &
 # ================== MAT chosen showcase settings =====================================================
 # /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-for(i in 1:nrow(showcaseSettings)) {
+for(i in 1:nrow(selectedSettings)) {
   # i = 3
   
   # set up df for plots: matrix approximation + shrinkage
-  plot_df = df |> filter(split_type == showcaseSettings[i, 'split_type'] & 
-                         approx_method == showcaseSettings[i, 'approx_method'] & 
-                         (is.na(showcaseSettings[i, 'rank']) | (rank == showcaseSettings[i, 'rank'])))
+  plot_df = df |> filter(split_type == selectedSettings[i, 'split_type'] & 
+                         approx_method == selectedSettings[i, 'approx_method'] & 
+                         (is.na(selectedSettings[i, 'rank']) | (rank == selectedSettings[i, 'rank'])))
   
   plot_subtitle = sprintf('%s%s', 
-                          showcaseSettings[i, 'approx_method'],
-                          if(is.na(showcaseSettings[i, 'rank'])) {''} else {sprintf(' (rank=%02.f)', showcaseSettings[i, 'rank'])})
+                          selectedSettings[i, 'approx_method'],
+                          if(is.na(selectedSettings[i, 'rank'])) {''} else {sprintf(' (rank=%02.f)', selectedSettings[i, 'rank'])})
   
   
   # matrix approximations
   plot_filename = sprintf('%s_matapprox_%s%s', 
-                          showcaseSettings[i, 'split_type'], 
-                          showcaseSettings[i, 'approx_method'],
-                          if(is.na(showcaseSettings[i, 'rank'])) {''} else {sprintf('%02.f', showcaseSettings[i, 'rank'])})
+                          selectedSettings[i, 'split_type'], 
+                          selectedSettings[i, 'approx_method'],
+                          if(is.na(selectedSettings[i, 'rank'])) {''} else {sprintf('%02.f', selectedSettings[i, 'rank'])})
   
   final_plot_matrix(plot_df = plot_df,
                     plot_title = "Shrinkage Point", 
@@ -317,9 +319,9 @@ for(i in 1:nrow(showcaseSettings)) {
   
   # shrunk estimates
   plot_filename = sprintf('%s_shrunk_%s%s', 
-                          showcaseSettings[i, 'split_type'], 
-                          showcaseSettings[i, 'approx_method'],
-                          if(is.na(showcaseSettings[i, 'rank'])) {''} else {sprintf('%02.f', showcaseSettings[i, 'rank'])})
+                          selectedSettings[i, 'split_type'], 
+                          selectedSettings[i, 'approx_method'],
+                          if(is.na(selectedSettings[i, 'rank'])) {''} else {sprintf('%02.f', selectedSettings[i, 'rank'])})
   
   final_plot_matrix(plot_df = plot_df,
                     plot_title = "Shrunk Estimate", 

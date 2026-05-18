@@ -289,10 +289,16 @@ if(ASSEMBLE_EBCI_PVALS) {
                            approx_method = as.factor(approx_method))
   
   
-  df_unshrunk =  shrink_results[['nosamplesplit']][['zeros']][['ebci_res']] |>
-                 dplyr::select(grna, gene, unshrunk_value, se, weight)
-  df_unshrunk = df_unshrunk |> dplyr::mutate(gene = as.factor(gene), grna = as.factor(grna))
-  
+  # df_unshrunk =  shrink_results[['nosamplesplit']][['zeros']][['ebci_res']] |>
+  #                dplyr::select(grna, gene, unshrunk_value, se, weight)
+  df_unshrunk =  rbind(shrink_results[['nosamplesplit']][['zeros']][['ebci_res']] |> # can choose any matapprox method
+                       dplyr::select(grna, gene, unshrunk_value, se, weight) |> 
+                       dplyr::mutate(split_type == 'nosamplesplit'),
+                     shrink_results[['samplesplit']][['zeros']][['ebci_res']] |>
+                       dplyr::select(grna, gene, unshrunk_value, se, weight) |> 
+                       dplyr::mutate(split_type == 'samplesplit')
+                    )
+  df_unshrunk = df_unshrunk |> dplyr::mutate(gene = as.factor(gene), grna = as.factor(grna), split_type = as.factor(split_type))
   
   # save as RDS (i think, a lot less space)
   saveRDS(object = df,          file = sprintf('%s/EBCI_shrinkage_dataframe.rds', replogle_save_path)) 

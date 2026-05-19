@@ -308,15 +308,15 @@ p_CI = ggplot(df_sample |> mutate(rank = as.factor(sapply(rank, FUN = function(r
   )
 
 p_CI
-ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.pdf', plot_path), plot = p_CI, width = 7, height = 4)
-ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.png', plot_path), plot = p_CI, width = 7, height = 4, dpi = 300)
+ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.pdf', plot_path), plot = p_CI, width = 8, height = 4)
+ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.png', plot_path), plot = p_CI, width = 8, height = 4, dpi = 300)
 
 
 
 
 
 # //////////////////////////////////////////////////////////////////////////////////////////////////
-# ================================== CI histogram? =============================================
+# ================================== CI violinplots ================================================
 # //////////////////////////////////////////////////////////////////////////////////////////////////
 
 # add unshrunk CI lengths
@@ -366,5 +366,277 @@ ggplot(df_sample_w_unshrunk |> mutate(rank = sapply(rank, FUN = function(r){if(i
 
 ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot.pdf', plot_path), width = 10, height = 9)
 ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot.png', plot_path), width = 10, height = 9, dpi = 300)
+
+
+# only display 3 ranks
+ggplot(df_sample_w_unshrunk |> mutate(rank = sapply(rank, FUN = function(r){if(is.na(r)){return('30')}else{return(r)}}) |> 
+                                        factor(levels = sort(unique(df$rank)))) |> 
+         filter(rank %in% c( '10', '20', '30')),
+       aes(x = methodrank,
+           y = shrunk_CIlength,
+           group = methodrank,
+           fill = approx_method, 
+           alpha = rank
+       )) + 
+  # geom_point(key_glyph = 'rect') + 
+  # geom_histogram(aes(y = after_stat(density)), key_glyph = 'rect', position = 'dodge', binwidth = .2) +
+  # geom_density(alpha = .4) +
+  geom_violin(bounds = c(0, Inf), width=1.4, position='identity') +
+  coord_cartesian(
+    ylim = c(0, 2),
+    # ylim = c(.2, 1),
+    expand = c(0, 0)) +
+  # facet_grid(cols = vars(split_type, approx_method), rows = vars(rank)) +
+  # facet_grid(cols = vars(split_type), rows = vars(split_type)) +
+  facet_wrap(facets = vars(split_type), nrow = 2) +
+  scale_fill_discrete(palette = method_colors_w_unshrunk) +
+  scale_alpha_discrete(guide = 'none') +
+  scale_y_continuous(breaks = seq(from = 0, to = 2, by = .5)) +
+  labs(title = 'CI Lengths', 
+       x = 'Method', y = 'CI Length', fill = 'Matrix\nApproximation\nMethod') + #, alpha = 'rank')
+  theme(panel.grid.minor  = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        strip.text = element_text(size = 12),
+        plot.title = element_text(size = 16),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(.4, 'cm'), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5)
+  )
+
+
+ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot2.pdf', plot_path), width = 10, height = 9)
+ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot2.png', plot_path), width = 10, height = 9, dpi = 300)
+
+
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+# ================================== EBCI pvals (maybe put in separate file 4.5...) =============================================
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+# sample p-value better (e.g. not just random from each group. pick the same AY tests)
+
+
+
+method_colors_w_unshrunk = c(methodrank_colors['Unshrunk'], method_colors)
+
+
+set.seed(12345)
+subset_AYtests = df_unshrunk |> filter(split_type == 'samplesplit') |> sample_n(size = 300) |> select(gene, grna)
+
+# construct sample df
+df_sample_shrunk = merge(subset_AYtests, df, by=c('grna', 'gene'), all.x=TRUE, all.y=FALSE) |>
+                    dplyr::rename(pval = ebci_pvals)
+
+# add original pvals (could go back to SCEPTRE p-value, but this take more effort... some code below for it)
+df_sample_unshrunk = merge(subset_AYtests, df_unshrunk, by=c('grna', 'gene'), all.x=TRUE, all.y=FALSE)  |>
+                     dplyr::mutate(pval = 2*(1 - pnorm(abs(unshrunk_value / se) ))) |>
+                     dplyr::mutate(approx_method = 'Unshrunk', 
+                                   rank          = NA,
+                                   methodrank    = 'Unshrunk') |> 
+                     dplyr::mutate(split_type    = factor(split_type,  levels = c('nosamplesplit', 'samplesplit'), 
+                                                                       labels = c('No Sample Split', 'Sample Split')))
+
+
+df_sample = dplyr::bind_rows(df_sample_shrunk, df_sample_unshrunk)
+
+# colnames(df_sample_shrunk)
+# colnames(df_sample_unshrunk)
+# colnames(df_sample)
+# head(df_sample)
+# df_sample |> filter(approx_method == 'Unshrunk')
+
+
+df_sample = df_sample |> mutate(methodrank    = factor(   methodrank, levels = c('Unshrunk', methodrank_nicenames_order))) |>
+                         mutate(approx_method = factor(approx_method, levels = names(method_colors_w_unshrunk)))
+ggplot(df_sample |> mutate(rank = sapply(rank, FUN = function(r){if(is.na(r)){return('30')}else{return(r)}}) |> 
+                                        factor(levels = sort(unique(df$rank)))),
+       aes(x = methodrank,
+           # y = -log(pval+.00001),
+           y = pval,
+           group = methodrank,
+           fill = approx_method, 
+           alpha = rank
+       )) + 
+  # geom_point(key_glyph = 'rect') + 
+  # geom_histogram(aes(y = after_stat(density)), key_glyph = 'rect', position = 'dodge', binwidth = .2) +
+  # geom_density(alpha = .4) +
+  geom_violin(#bounds = c(0, Inf), 
+              bounds = c(0, 1),
+              width=1.8, position='identity') +
+  coord_cartesian(
+    ylim = c(0, 1),
+    # ylim = c(.2, 1),
+    expand = c(0, 0)) +
+  # facet_grid(cols = vars(split_type, approx_method), rows = vars(rank)) +
+  # facet_grid(cols = vars(split_type), rows = vars(split_type)) +
+  facet_wrap(facets = vars(split_type), nrow = 2) +
+  scale_fill_discrete(palette = method_colors_w_unshrunk) +
+  scale_alpha_discrete(guide = 'none') +
+  # scale_y_continuous(breaks = seq(from = 0, to = 2, by = .5)) +
+  labs(title = 'p-values', 
+       x = 'Method', y = 'p-value', fill = 'Matrix\nApproximation\nMethod') + #, alpha = 'rank')
+  theme(panel.grid.minor  = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        strip.text = element_text(size = 12),
+        plot.title = element_text(size = 16),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(.4, 'cm'), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5)
+  )
+
+
+ggsave(filename = sprintf('%s/final/CI/pvals_violinplot.pdf', plot_path), width = 14, height = 8)
+ggsave(filename = sprintf('%s/final/CI/pvals_violinplot.png', plot_path), width = 14, height = 8, dpi = 300)
+
+
+
+
+
+ggplot(df_sample |> mutate(rank = sapply(rank, FUN = function(r){if(is.na(r)){return('30')}else{return(r)}}) |> 
+                             factor(levels = sort(unique(df$rank)))) |>
+                    filter(rank %in% c('5', '10', '30')),
+       aes(x = methodrank,
+           # y = -log(pval+.00001),
+           y = pval,
+           group = methodrank,
+           fill = approx_method, 
+           alpha = rank
+       )) + 
+  # geom_point(key_glyph = 'rect') + 
+  # geom_histogram(aes(y = after_stat(density)), key_glyph = 'rect', position = 'dodge', binwidth = .2) +
+  # geom_density(alpha = .4) +
+  geom_violin(#bounds = c(0, Inf), 
+    bounds = c(0, 1),
+    width=1.6, position='identity') +
+  coord_cartesian(
+    # ylim = c(0, 1),
+    ylim = c(0, .3),
+    expand = c(0, 0)) +
+  # facet_grid(cols = vars(split_type, approx_method), rows = vars(rank)) +
+  # facet_grid(cols = vars(split_type), rows = vars(split_type)) +
+  facet_wrap(facets = vars(split_type), nrow = 2) +
+  scale_fill_discrete(palette = method_colors_w_unshrunk) +
+  scale_alpha_discrete(guide = 'none') +
+  # scale_y_continuous(breaks = seq(from = 0, to = 2, by = .5)) +
+  labs(title = 'p-values', 
+       x = 'Method', y = 'p-value', fill = 'Matrix\nApproximation\nMethod') + #, alpha = 'rank')
+  theme(panel.grid.minor  = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        strip.text = element_text(size = 12),
+        plot.title = element_text(size = 16),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(.4, 'cm'), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5)
+  )
+
+ggsave(filename = sprintf('%s/final/CI/pvals_violinplot2.pdf', plot_path), width = 14, height = 8)
+ggsave(filename = sprintf('%s/final/CI/pvals_violinplot2.png', plot_path), width = 14, height = 8, dpi = 300)
+
+
+
+
+
+
+
+
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+# ================================== Trash =========================================================
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+
+if(F) {
+  # faceted hist of pvals
+  ggplot(df_sample |>  mutate(rank = sapply(rank, FUN = function(r){if(is.na(r)){return('30')}else{return(r)}}) |> 
+                                factor(levels = sort(unique(df$rank)))) |> 
+           filter(rank %in% c('5', '30')),
+         aes(x = pval,
+             fill = approx_method, 
+             alpha = rank)) +
+    geom_histogram(aes(y = after_stat(density))) +
+    facet_grid(cols = vars(split_type), rows = vars(methodrank)) +
+    scale_fill_discrete(palette = method_colors_w_unshrunk) +
+    scale_alpha_discrete(guide = 'none') 
+}
+
+
+
+
+
+# there is the SCEPTRE p-value, and then the slighlty regularized (SCEPTRE p-value)-->se-->std norm p-value
+# so we could compare to the original (probably the better p-value for analysis)
+# or we could compare to the slightly regularized p-value (better to comparison to EBCI)
+
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+# ================================== > Load SCEPTRE p-values =========================================
+# //////////////////////////////////////////////////////////////////////////////////////////////////
+use_SCEPTRE_pvals = FALSE
+# have to do some work to load in SCEPTRE p-values
+if(use_SCEPTRE_pvals) {
+  
+
+
+
+
+sceptre_save_path = '../../saves/sceptre/replogle/' # location where sceptre results are located
+replogle_save_path= '../../saves/replogle/'         # location to save replogle approximations/shrinkage/etc. results
+plot_path         = '../../plots/replogle/EBCI/'    # location to save plots of EBCI analysis on replogle dataset
+
+
+gene_index = read.csv(sprintf('%s/gene_index.csv', replogle_save_path))
+grna_index = read.csv(sprintf('%s/grna_index.csv', replogle_save_path))
+
+
+effects = list()
+for(split in c('all', 'train', 'test')) {
+  sceptre_obj = readRDS(sprintf('%s/sceptre_obj_%s.rds', sceptre_save_path, split))
+  effects[[split]] = dplyr::bind_rows(
+    sceptre_obj@calibration_result |> mutate(test = 'negative')  |> relocate(test),
+    sceptre_obj@power_result       |> mutate(test = 'positive')  |> relocate(test),
+    sceptre_obj@discovery_result   |> mutate(test = 'discovery') |> relocate(test)) |>
+    mutate(estimate = log_2_fold_change) |> 
+    rename(pvalue = p_value,
+           grna = grna_target,
+           gene = response_id) |>
+    mutate(se = mapply(FUN = spline_se, 
+                       p   = pvalue, 
+                       mu  = estimate) ) |> 
+    mutate(tstat = estimate / se) # make a tstat column = estimate / se
+  rm(sceptre_obj); gc()
+}
+
+
+
+sceptre_pvals = list()
+for(split_type in c('samplesplit', 'nosamplesplit')) {
+  effects_df_split = effects[[split]] |> dplyr::filter((test == 'discovery') & (gene %in% gene_index$gene) & (grna %in% grna_index$grna)) 
+  
+  # # following code from 2_replogleShrinkage.r... but we don't need to put it into matrix form...
+  # # pval 
+  # # matrix form: grna x gene
+  # matrices_se_split = effects_df_split  |> 
+  #   dplyr::select(grna, gene, p) |>
+  #   tidyr::pivot_wider(names_from = gene, values_from = p) |>
+  #   tibble::column_to_rownames(var='grna') |> as.matrix()
+  # # order based on grna_index and gene_index
+  # p_matrices[[split]] = matrices_se_split[ grna_index |> arrange(grna_idx) |> pull(grna), 
+  #                                           gene_index |> arrange(gene_idx) |> pull(gene)]
+  # 
+  
+  
+  
+  sceptre_pvals[[split]] = effects_df_split |> dplyr::select(grna, gene, p) |> dplyr::rename(sceptre_pvals = p)
+  
+}
+
+
+}
+
+
+
+
+
+
+
+
 
 

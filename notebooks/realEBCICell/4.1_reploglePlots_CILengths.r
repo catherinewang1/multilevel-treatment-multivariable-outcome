@@ -148,7 +148,7 @@ create_colors_replogle <- function(main_color, number_of_colors) {
 #'  use same as simEBCI?
 create_color_pallete_replogle <- function(ranks) {
   distinct_colors = paletteer::paletteer_d("colorBlindness::paletteMartin")  # library(paletteer)
-  distinct_colors[c(2, 4, 6, 7, 12, 13, 14)]
+  distinct_colors[c(2, 4, 6, 7, 9, 12, 13, 14)]
   
   
   
@@ -208,7 +208,7 @@ create_color_pallete_replogle <- function(ranks) {
 
 
 # df for all the matrices 
-df = merge(df_unshrunk, df_shrunk, by = c('gene', 'grna')) 
+df = merge(df_unshrunk, df_shrunk, by = c('gene', 'grna', 'split_type')) 
 df = df |> relocate(unshrunk_CIlength, .after = last_col()) |> mutate(shrunk_CIlength = upper_ci - lower_ci)
 
 
@@ -245,48 +245,126 @@ dir.create(sprintf('%s/final/CI/', plot_path))
 # CI lengths before and after
 df_sample = df |>
               # filter(approx_method != 'Sparse SVD (CV params)') |> 
-              group_by(split_type, approx_method, rank) |> sample_n(size=10) # if too many points, just do a few for plotting
-p_CI = ggplot(df_sample,
+              group_by(split_type, approx_method, rank) |> sample_n(size=400) # if too many points, just do a few for plotting
+# p_CI = ggplot(df_sample,
+#        aes(x = unshrunk_CIlength, y = shrunk_CIlength,
+#            # color = approx_method, 
+#            # alpha = rank, 
+#            # group = paste0(approx_method, rank)
+#            color = methodrank
+#            )) + 
+#   # geom_point(key_glyph = 'rect') + 
+#   geom_line(key_glyph = 'rect', alpha = .85) +
+#   geom_abline(aes(slope = 1, intercept = 0)) +
+#   coord_cartesian(xlim = c(0, 1.3), 
+#                   ylim = c(0, 1.3),
+#                   # ylim = c(.2, 1), 
+#                   expand = c(0, 0)) +
+#   facet_grid(cols = vars(split_type)) +
+#   scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% df_sample$methodrank]) +
+#   labs(title = 'CI lengths before and after shrinkage', 
+#        x = 'Unshrunk CI Length', y = 'Shrunk CI Length', color = 'Matrix Approximation Method') + #, alpha = 'rank')
+#   theme(panel.grid.minor  = element_blank(), 
+#         strip.text = element_text(size = 12),
+#         plot.title = element_text(size = 14),
+#         legend.text = element_text(size = 6),
+#         legend.key.size = unit(.4, 'cm')
+#         )
+# 
+# p_CI
+# ggsave(filename = sprintf('%s/final/CI/CIlengths.pdf', plot_path), plot = p_CI, width = 10, height = 4)
+# ggsave(filename = sprintf('%s/final/CI/CIlengths.png', plot_path), plot = p_CI, width = 10, height = 4, dpi = 300)
+# 
+
+
+
+method_colors = methodrank_colors[grepl('(rank=30)|(Zero)|(Average)', names(methodrank_colors))]
+names(method_colors) = gsub(pattern = " \\(rank=30\\)", replacement = "", x = names(method_colors))
+p_CI = ggplot(df_sample |> mutate(rank = as.factor(sapply(rank, FUN = function(r){if(is.na(r)){return(30)}else{return(r)}}))),
        aes(x = unshrunk_CIlength, y = shrunk_CIlength,
-           # color = approx_method, 
-           # alpha = rank, 
-           # group = paste0(approx_method, rank)
-           color = methodrank
-           )) + 
+           group = methodrank,
+           color = approx_method, 
+           alpha = rank
+       )) + 
   # geom_point(key_glyph = 'rect') + 
-  geom_line(key_glyph = 'rect', alpha = .85) +
+  geom_line(key_glyph = 'rect') +
   geom_abline(aes(slope = 1, intercept = 0)) +
-  coord_cartesian(xlim = c(0, 1.3), ylim = c(.2, 1), 
+  coord_cartesian(xlim = c(0, 1.3), 
+                  ylim = c(0, 1.3),
+                  # ylim = c(.2, 1), 
                   expand = c(0, 0)) +
   facet_grid(cols = vars(split_type)) +
-  scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% df_sample$methodrank]) +
+  scale_color_discrete(palette = method_colors) +
+  scale_x_continuous(breaks = c(0, .25, .5, .75, 1, 1.25),
+                     labels = c('0', .25, .5, .75, 1.00, 1.25)) + 
   labs(title = 'CI lengths before and after shrinkage', 
-       x = 'Unshrunk CI Length', y = 'Shrunk CI Length', color = 'Matrix Approximation Method') + #, alpha = 'rank')
+       x = 'Unshrunk CI Length', y = 'Shrunk CI Length', color = 'Matrix\nApproximation\nMethod') + #, alpha = 'rank')
   theme(panel.grid.minor  = element_blank(), 
         strip.text = element_text(size = 12),
-        plot.title = element_text(size = 14),
-        legend.text = element_text(size = 6),
+        plot.title = element_text(size = 16),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
         legend.key.size = unit(.4, 'cm')
-        )
+  )
 
 p_CI
-ggsave(filename = sprintf('%s/final/CI/CIlengths.pdf', plot_path), plot = p_CI, width = 10, height = 4)
-ggsave(filename = sprintf('%s/final/CI/CIlengths.png', plot_path), plot = p_CI, width = 10, height = 4, dpi = 300)
-
+ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.pdf', plot_path), plot = p_CI, width = 7, height = 4)
+ggsave(filename = sprintf('%s/final/CI/CIlengths_beforeafter.png', plot_path), plot = p_CI, width = 7, height = 4, dpi = 300)
 
 
 
 
 
 # //////////////////////////////////////////////////////////////////////////////////////////////////
-# ================================== Point Plots =============================================
+# ================================== CI histogram? =============================================
 # //////////////////////////////////////////////////////////////////////////////////////////////////
 
+# add unshrunk CI lengths
+method_colors_w_unshrunk = c(methodrank_colors['Unshrunk'], method_colors)
+df_sample_w_unshrunk = rbind(df_sample, 
+                             df_sample |> filter(approx_method == 'Zero') |> mutate(approx_method = 'Unshrunk', 
+                                                       methodrank = 'Unshrunk',
+                                                       shrunk_CIlength = unshrunk_CIlength, 
+                                                       shrunk_value=NA, lower_ci=NA, upper_ci=NA, w_eb=NA, ebci_pvals=NA)
+)
+df_sample_w_unshrunk = df_sample_w_unshrunk |> mutate(methodrank    = factor(   methodrank, levels = c('Unshrunk', methodrank_nicenames_order))) |>
+                                               mutate(approx_method = factor(approx_method, levels = names(method_colors_w_unshrunk)))
+ggplot(df_sample_w_unshrunk |> mutate(rank = sapply(rank, FUN = function(r){if(is.na(r)){return('30')}else{return(r)}}) |> 
+                                             factor(levels = sort(unique(df$rank)))),
+       aes(x = methodrank,
+           y = shrunk_CIlength,
+           group = methodrank,
+           fill = approx_method, 
+           alpha = rank
+       )) + 
+  # geom_point(key_glyph = 'rect') + 
+  # geom_histogram(aes(y = after_stat(density)), key_glyph = 'rect', position = 'dodge', binwidth = .2) +
+  # geom_density(alpha = .4) +
+  geom_violin(bounds = c(0, Inf), width=1.4, position='identity') +
+  coord_cartesian(
+                  ylim = c(0, 2),
+                  # ylim = c(.2, 1),
+                  expand = c(0, 0)) +
+  # facet_grid(cols = vars(split_type, approx_method), rows = vars(rank)) +
+  # facet_grid(cols = vars(split_type), rows = vars(split_type)) +
+  facet_wrap(facets = vars(split_type), nrow = 2) +
+  scale_fill_discrete(palette = method_colors_w_unshrunk) +
+  scale_alpha_discrete(guide = 'none') +
+  scale_y_continuous(breaks = seq(from = 0, to = 2, by = .5)) +
+  labs(title = 'CI Lengths', 
+       x = 'Method', y = 'CI Length', fill = 'Matrix\nApproximation\nMethod') + #, alpha = 'rank')
+  theme(panel.grid.minor  = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        strip.text = element_text(size = 12),
+        plot.title = element_text(size = 16),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8),
+        legend.key.size = unit(.4, 'cm'), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5)
+  )
 
 
-
-
-
-
+ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot.pdf', plot_path), width = 10, height = 9)
+ggsave(filename = sprintf('%s/final/CI/CIlengths_violinplot.png', plot_path), width = 10, height = 9, dpi = 300)
 
 

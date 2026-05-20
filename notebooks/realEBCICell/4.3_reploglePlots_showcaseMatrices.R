@@ -54,9 +54,19 @@ myBlue = colorRampPalette(RColorBrewer::brewer.pal(n = 7, name = "RdBu"))(7)[7]
 # Select some settings to showcase:
 selectedSettings = data.frame(matrix(
   c(# settings for sample splitting
+    'samplesplit',                         'SVD',  1,
     'samplesplit',                         'SVD',  3,
+    'samplesplit',                         'SVD',  5,
+    'samplesplit',                         'SVD',  10,
+    'samplesplit',                         'SVD',  20,
+    'samplesplit',                         'SVD',  30,
     'samplesplit',                   'sparseSVD', 20,
-    'samplesplit',        'sparseSVD_autoparams', 20,
+    'samplesplit',        'sparseSVD_autoparams',  1,
+    'samplesplit',        'sparseSVD_autoparams',  3,
+    'samplesplit',        'sparseSVD_autoparams',  5,
+    'samplesplit',        'sparseSVD_autoparams',  10,
+    'samplesplit',        'sparseSVD_autoparams',  20,
+    'samplesplit',        'sparseSVD_autoparams',  30,
     'samplesplit',                  'softImpute',  5,
     'samplesplit',             'spectralbiclust',  5,
     'samplesplit',   'spectralbiclust_threshold',  5,

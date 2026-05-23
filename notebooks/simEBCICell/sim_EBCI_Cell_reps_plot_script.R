@@ -17,13 +17,14 @@ source('../../utils/simEBCICell_utils.R')
 
 overall_save_folder = '../../plots/simEBCICell/'
 # setting_names = c('A', 'E')
-setting_names = c('A')
-# setting_names = c('E')
+# setting_names = c('A')
+setting_names = c('E')
 
 
 CREATE_PLOTS_INDIVIDUAL      = TRUE # create these plots or not
 CREATE_PLOTS_OVERALL         = TRUE # create these plots or not
-SAMPLE_N = FALSE # sample for p-values plot
+# SAMPLE_N = FALSE # sample for p-values plot
+SAMPLE_N = TRUE # sample for p-values plot
 NUMBER_OF_INDIVIDUAL_PLOTS = 3
 
 
@@ -69,7 +70,7 @@ if(CREATE_PLOTS_OVERALL) {
   
   
   for(setting_name in setting_names) {
-    print(sprintf('[%s] %s', Sys.time(), cur_save_folder_rep))
+    print(sprintf('[%s] %s', Sys.time(), setting_name))
     
     sim_results = readRDS(sprintf('%s%s/1/sim_results.rds', overall_save_folder, setting_name)) # try to make sure rep 1 is present, need ranks, ALPHA
     summary_df  = readRDS(sprintf('%s%s/sim_result_ebci_summary.rds', overall_save_folder, setting_name))
@@ -91,7 +92,7 @@ if(CREATE_PLOTS_OVERALL) {
     
     if(SAMPLE_N) {
       set.seed(1234)
-      summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(2000) # E: 25000 max (grna-gene pairs)
+      summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(5000) # E: 25000 max (grna-gene pairs)
     } else {
       summary_df_sampled = summary_df
     } 

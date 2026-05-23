@@ -35,8 +35,8 @@ CREATE_SUMMARY_DATAFRAME          = TRUE # create overall summary dataframe or n
 
 
 
-# setting_names = c('A', 'E')
-setting_names = c('A')
+setting_names = c('A', 'E')
+# setting_names = c('A')
 # setting_names = c('E')
 
 RUN_PVAL_CURVE = TRUE
@@ -105,6 +105,9 @@ if(RUN_PVAL_CURVE) {
     temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
     
     
+    
+    
+    
     ggplot(temp_df, 
            aes(x = theoretical, y = avg_ebci_pval_curve,
                group = methodrank, color = methodrank, fill = methodrank)) +
@@ -117,7 +120,24 @@ if(RUN_PVAL_CURVE) {
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
     
     
-    ggsave(filename = sprintf('%s/ebci_pvals_averageqqplotcurve.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    
+    # subsampled version
+    set.seed(12345)
+    ggplot(temp_df |> group_by(sim_distn, split_type, method, rank) |> sample_frac(size = .25), # E: 25000 max (grna-gene pairs) , 
+           aes(x = theoretical, y = avg_ebci_pval_curve,
+               group = methodrank, color = methodrank, fill = methodrank)) +
+      geom_abline(aes(slope = 1, intercept = 0), color = 'black', linewidth = 1) +
+      geom_line(alpha = .8, linewidth = .8, key_glyph = 'rect') +
+      coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+      scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
+      theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
+    
+    
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve_sampled.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    
     
     
     rm(df, ranks)
@@ -131,7 +151,8 @@ if(RUN_PVAL_CURVE) {
 # ///////////////////////////////////////////////////////////////////////////////////////////////////////
 # ============== TRASH ==================================================================================
 # ///////////////////////////////////////////////////////////////////////////////////////////////////////
-
+if(F) {
+  
 methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
 # === labels
 # make the ordering for a various number of methodrank levels (even if not used): 
@@ -175,7 +196,7 @@ ggplot(temp_df,
   facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
   theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
 
-ggsave(filename = sprintf('%s/ebci_pvals_averageqqplotcurve.pdf', save_folder), width = width, height = height) 
+ggsave(filename = sprintf('%s/ebci_pvals_avgqqplotcurve.pdf', save_folder), width = width, height = height) 
 
 
 
@@ -242,7 +263,7 @@ ggplot(temp_df,
 ggsave(filename = sprintf('%s/ebci_pvals_averageqqplotcurve.pdf', save_folder), width = width, height = height) 
 
 
-
+}
 
 
 

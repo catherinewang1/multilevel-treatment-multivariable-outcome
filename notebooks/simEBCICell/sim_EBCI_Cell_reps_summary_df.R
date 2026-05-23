@@ -8,7 +8,12 @@
 # - (THIS) sim_EBCI_Cell_reps_summary_df.R      (from the large saves, make a summary df)
 # -        sim_EBCI_Cell_reps_plot_script.R     (making some plots)
 
+
+suppressPackageStartupMessages(library(dplyr))
+
+
 source('../../utils/simEBCICell_utils.R') 
+
 
 overall_save_folder = '../../plots/simEBCICell/'
 

@@ -2929,11 +2929,11 @@ create_summary_bytest_df <- function(df, ALPHA, save_folder=NULL) {
 
   # === add 1 ebci_pval
   chosen_rep = min(df$rep, na.rm = TRUE) # chosen repetition to save the ebci pvals from 1 rep
-  ebci_pval_1     = df |> filter(rep == chosen_rep) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+  ebci_pval_1     = df |> filter(rep == chosen_rep) |> dplyr::select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
   # add pvals from glm (just use Normal distn, 2*pnorm(-abs(est) / se))
   ebci_pval_1_glm = df |> filter(rep == chosen_rep)  |> filter(method == 'zeros' & is.na(rank)) # no shrinkage/glm, pick any (would be same)
   ebci_pval_1_glm$ebci_pvals = 2 * pnorm(-abs(ebci_pval_1_glm$unshrunk_value / ebci_pval_1_glm$se))
-  ebci_pval_1_glm = ebci_pval_1_glm |> mutate(method = 'unshrunk', rank = NA) |> select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
+  ebci_pval_1_glm = ebci_pval_1_glm |> mutate(method = 'unshrunk', rank = NA) |> dplyr::select(sim_distn, split_type, method, rank, gene, grna, ebci_pvals)
 
   df_summary = merge(df_summary, rbind(ebci_pval_1, ebci_pval_1_glm), 
                      by = c('sim_distn', 'split_type', 'method', 'rank', 'gene', 'grna'), 

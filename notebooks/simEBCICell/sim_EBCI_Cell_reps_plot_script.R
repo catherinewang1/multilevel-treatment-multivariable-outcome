@@ -16,9 +16,9 @@ source('../../utils/simEBCICell_utils.R')
 
 
 overall_save_folder = '../../plots/simEBCICell/'
-# setting_names = c('A', 'E')
+setting_names = c('A', 'E')
 # setting_names = c('A')
-setting_names = c('E')
+# setting_names = c('E')
 
 
 CREATE_PLOTS_INDIVIDUAL      = TRUE # create these plots or not
@@ -92,7 +92,13 @@ if(CREATE_PLOTS_OVERALL) {
     
     if(SAMPLE_N) {
       set.seed(1234)
-      summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(5000) # E: 25000 max (grna-gene pairs)
+      # choose subset of grna gene
+      chosen_grna_gene = summary_df |> select(gene, grna) |> distinct()
+      chosen_grna_gene = chosen_grna_gene |> dplyr::slice_sample(n = min(nrow(chosen_grna_gene), 5000)) 
+      
+      summary_df_sampled = merge(chosen_grna_gene, summary_df, by = c('grna', 'gene'))
+      # this does not work when fewer then chosen # to sample
+      # summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(5000) # E: 25000 max (grna-gene pairs)
     } else {
       summary_df_sampled = summary_df
     } 

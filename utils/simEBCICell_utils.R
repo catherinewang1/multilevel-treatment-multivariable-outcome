@@ -933,14 +933,18 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
         group_by(sim_distn, split_type, method, rank) |> 
         summarize(mse = mean(mse), .groups = 'drop') |> 
         mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+               # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+               )
     } else {
       plot_df_summ = plot_df |> 
           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
           group_by(sim_distn, split_type, method, rank) |> 
           summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
           mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                 split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+                 # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+                 split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+               )
     }
    
 
@@ -949,13 +953,14 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
     
     # take the mse from unshrunk on Full Dataset
     # original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
-    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'No Sample Split') # split_type == 'Full Dataset')
     original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
     
     p_mse = ggplot() +
       geom_col(data = plot_df_summ, aes(x = methodrank, y = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
       geom_hline(data = original_all_mse, aes(yintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
-      facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'free_y', 
+      facet_grid(rows = vars(sim_distn), cols = vars(split_type),
+                 scales = 'free_y', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
@@ -976,7 +981,9 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
     p_mse = ggplot() +
       geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
       geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
-      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+      facet_grid(# cols = vars(sim_distn), rows = vars(split_type), 
+                 rows = vars(sim_distn), cols = vars(split_type),
+                 scales = 'free', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
@@ -1006,7 +1013,9 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
         group_by(sim_distn, split_type, method, rank) |> 
         summarize(mse = mean(mse), .groups = 'drop') |> 
         mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+              #  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+               )
     } else {
       plot_df_summ = plot_df |> 
         filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
@@ -1014,7 +1023,9 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
         group_by(sim_distn, split_type, method, rank) |> 
         summarize(mse = mean((shrunk_value - true_theta)^2)) |> 
         mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+              #  split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+               split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+               )
     }
     
 
@@ -1024,7 +1035,7 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
     
     # take the mse from unshrunk on Full Dataset
     # original_all_mse = plot_df_summ |> filter(method == 'unshrunkallcells')
-    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'Full Dataset')
+    original_all_mse = plot_df_summ |> filter(method == 'unshrunk' & split_type == 'No Sample Split') #split_type == 'Full Dataset')
     original_all_mse = rbind(original_all_mse, original_all_mse |> mutate(split_type = 'Sample Split')) # repeat but change split type for plotting
     
     p_mse_nonzero = ggplot() +
@@ -1067,7 +1078,9 @@ h5_3_plots_mse <- function(plot_df, ranks, save_folder, height=NULL, width=NULL,
     p_mse_nonzero = ggplot() +
       geom_col(data = plot_df_summ, aes(y = methodrank, x = mse, fill = methodrank), color = 'black', alpha = 1) + # MSEs
       geom_vline(data = original_all_mse, aes(xintercept = mse), color = '#DB1A1A', linewidth = .7, alpha = .6) +  # MSEs for 'naive'/original method
-      facet_grid(cols = vars(sim_distn), rows = vars(split_type), scales = 'free', 
+      facet_grid(# cols = vars(sim_distn), rows = vars(split_type), 
+                 rows = vars(sim_distn), cols = vars(split_type),
+                 scales = 'free', 
                  # labeller = as_labeller(c(sim_distn_nicename, split_type_nicename))
                  labeller = label_value
                  ) +
@@ -1144,7 +1157,9 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
       group_by(sim_distn, split_type, method, rank) |> 
       summarize(miscoverage_rate = mean(miscoverage_rate), .groups = 'drop') |> 
       mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+             # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+            )
   } else {
     plot_df_summ = plot_df |> 
       filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
@@ -1152,7 +1167,9 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
       group_by(sim_distn, split_type, method, rank) |> 
       summarize(miscoverage_rate = 1 - mean(isTrueThetaCovered), .groups = 'drop') |> 
       mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+             # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+            )
   }
  
 
@@ -1289,7 +1306,9 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder, width=10, height=5, sav
             mutate(isTheta0 = (true_theta == 0),
                    isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
                    sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+                   # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+            )
   temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
   temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
   
@@ -1340,7 +1359,9 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder, width=10, height=5, sav
             mutate(isTheta0 = (true_theta == 0),
                    isTheta0Named = sapply(FUN = isTheta0NamedFunc, X = isTheta0),
                    sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split')))
+                   # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+                   split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+            )
   temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
   temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
     

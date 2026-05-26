@@ -2,16 +2,13 @@
 # saved objects from running the notebooks/simEBCICell/sim_EBCI_Cell_reps_script.R
 # 
 # Run in order:
-# -        sim_EBCI_Cell_reps_script.R          (actual simulation runs)
-# -        sim_EBCI_Cell_reps_ebcipval_script.R (using saved sim results, find the inverted ebcipvals)
+# -        1_sim_EBCI_Cell_reps_script.R              (run simulation: sim data, estimate, and shrink)
+# -        2_sim_EBCI_Cell_reps_ebcipval_script.R     (using saved sim results, calculate the inverted EBCI pvals)
+# -        3_sim_EBCI_Cell_reps_summary_df.R          (from the large saves, make a summary df)
 #  --- [only required to run up to here] ---
-# -        sim_EBCI_Cell_reps_summary_df.R      (from the large saves, make a summary df)
-# -        sim_EBCI_Cell_reps_plot_script.R     (making some plots)
-# - (THIS) 7.X_sim_EBCI_Cell_reps_pvals_curve.r (combine and make pval plots by averaging curve)
-#
-#
-# 
-
+# -        4.1_sim_EBCI_Cell_reps_plot_script.R       (plot MSE, Miscoverage, and pval (one and fishers) plots)
+# - (THIS) 4.2_sim_EBCI_Cell_reps_plot_pvals_curve.r  (plot average pval curve qq plot)
+# -        4.3_sim_EBCI_Cell_reps_plot_CIlength.r     (plot CI length plot)
 
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(ggplot2))

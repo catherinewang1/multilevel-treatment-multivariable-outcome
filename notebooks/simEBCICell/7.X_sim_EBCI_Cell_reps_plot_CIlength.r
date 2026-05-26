@@ -259,7 +259,6 @@ if(CREATE_PLOTS_OVERALL) {
    
     
     
-    
     # ranks
     ranks = df$rank |> unique()
     ranks = ranks[!is.na(ranks)] |> sort()
@@ -283,7 +282,7 @@ if(CREATE_PLOTS_OVERALL) {
       
       # just plot each individually... then assemble together seems to be the easiest
       # pois, nosamplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'nosamplesplit'), 
+      p1 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'nosamplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_pois_nosamplesplit', setting_name), 
                     SAMPLE_N = FALSE,
@@ -291,7 +290,7 @@ if(CREATE_PLOTS_OVERALL) {
                     xbreaks = c(.1, .2, .3, .4), 
                     plot_height = plot_height_sep, plot_width = plot_width_sep)
       # pois, samplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'samplesplit'), 
+      p2 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'samplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_pois_samplesplit', setting_name), 
                     SAMPLE_N = FALSE,
@@ -299,7 +298,7 @@ if(CREATE_PLOTS_OVERALL) {
                     xbreaks = c(.2, .4, .6), 
                     plot_height = plot_height_sep, plot_width = plot_width_sep)
       # nb, nosamplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'nosamplesplit'), 
+      p3 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'nosamplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_nb_nosamplesplit', setting_name), 
                     SAMPLE_N = FALSE,
@@ -307,7 +306,7 @@ if(CREATE_PLOTS_OVERALL) {
                     xbreaks = c(.1, .2, .3, .4, .5), 
                     plot_height = plot_height_sep, plot_width = plot_width_sep)
       # nb, samplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'samplesplit'), 
+      p4 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'samplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_nb_samplesplit', setting_name), 
                     SAMPLE_N = FALSE,
@@ -318,8 +317,24 @@ if(CREATE_PLOTS_OVERALL) {
       
       
       
+      A_grob = gridExtra::arrangeGrob(
+        p1 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()),
+        p2 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()),
+        p3 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()),
+        p4 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()),
+        layout_matrix = matrix(c(1, 2, 
+                                 3, 4), byrow=TRUE, nrow=2)
+      )
+      
+      ggsave(plot = A_grob, filename = sprintf('%s/%s/CIlength_assembled.png', overall_save_folder, setting_name), height = 7, width = 8, dpi = 300)
+      ggsave(plot = A_grob, filename = sprintf('%s/%s/CIlength_assembled.pdf', overall_save_folder, setting_name), height = 7, width = 8)
+      
+      rm(p1, p2, p3, p4, A_grob)
+      
       
     } else if(setting_name == 'E') {
+      
+      
       plot_CIlength(plot_df = df_summ, 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength', setting_name), 
@@ -327,43 +342,83 @@ if(CREATE_PLOTS_OVERALL) {
                     xylim    = c(.075, .5),
                     xbreaks = c(0, .2, .4))
       
+      
+      
       # just plot each individually... then assemble together seems to be the easiest
       # pois, nosamplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'nosamplesplit'), 
+      
+      E_SAMPLE_N = FALSE
+      
+      # p1 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'nosamplesplit'), 
+      #               ranks = ranks, 
+      #               save_name = sprintf('%s/CIlength_pois_nosamplesplit', setting_name), 
+      #               SAMPLE_N = E_SAMPLE_N,
+      #               xylim    = c(0, .35),
+      #               xbreaks = c(.1, .2, .3), 
+      #               plot_height = plot_height_sep, plot_width = plot_width_sep)
+      
+      
+      p1 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'nosamplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_pois_nosamplesplit', setting_name), 
-                    SAMPLE_N = FALSE,
-                    xylim    = c(.1, .35),
+                    SAMPLE_N = E_SAMPLE_N,
+                    xylim    = c(0, .35),
                     xbreaks = c(.1, .2, .3), 
-                    plot_height = plot_height_sep, plot_width = plot_width_sep)
+                    plot_height = plot_height_sep, plot_width = plot_width_sep) +
+        coord_cartesian(
+                        # xlim = c(0, .35),
+                        xlim = c(.1, .35),
+                        ylim = c(0, .35), 
+                        expand = c(0, 0, 0, 0))
+      
       # pois, samplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'samplesplit'), 
+      p2 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'pois' & split_type == 'samplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_pois_samplesplit', setting_name), 
-                    SAMPLE_N = FALSE,
+                    SAMPLE_N = E_SAMPLE_N,
                     xylim    = c(.1, .5),
                     xbreaks = c(.1, .2, .3, .4, .5), 
                     plot_height = plot_height_sep, plot_width = plot_width_sep)
       # nb, nosamplesplit
-      plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'nosamplesplit'), 
+      p3 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'nosamplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_nb_nosamplesplit', setting_name), 
-                    SAMPLE_N = FALSE,
-                    xylim    = c(.16, .47),
+                    SAMPLE_N = E_SAMPLE_N,
+                    xylim    = c(0, .47),
                     xbreaks = c(.1, .2, .3, .4, .5), 
-                    plot_height = plot_height_sep, plot_width = plot_width_sep)
+                    plot_height = plot_height_sep, plot_width = plot_width_sep) +
+            coord_cartesian(
+              # xlim = c(0, .47),
+              xlim = c(.24, .47),
+              ylim = c(0, .47), 
+              expand = c(0, 0, 0, 0))
       # nb, samplesplit
-      p = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'samplesplit'), 
+      p4 = plot_CIlength(plot_df = df_summ |> filter(sim_distn == 'nb' & split_type == 'samplesplit'), 
                     ranks = ranks, 
                     save_name = sprintf('%s/CIlength_nb_samplesplit', setting_name), 
-                    SAMPLE_N = FALSE,
+                    SAMPLE_N = E_SAMPLE_N,
                     xylim    = c(.2, .7),
                     xbreaks = c(0, .2, .4, .6), 
                     plot_height = plot_height_sep, plot_width = plot_width_sep)
-      p
+      
       # could change to different xylim allowed...
       # p + coord_cartesian(xlim = c(.35, .7), ylim = c(.2, .7))
       
+      
+      E_grob = gridExtra::arrangeGrob(
+                    p1 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()) + geom_abline(aes(intercept = 0, slope = 1), color = 'black',linetype = 'solid', linewidth = 1.25),
+                    p2 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()) + geom_abline(aes(intercept = 0, slope = 1), color = 'black',linetype = 'solid', linewidth = 1.25),
+                    p3 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()) + geom_abline(aes(intercept = 0, slope = 1), color = 'black',linetype = 'solid', linewidth = 1.25),
+                    p4 + facet_grid(NULL) + theme(legend.position = 'none', plot.title = element_blank(), axis.title = element_blank()) + geom_abline(aes(intercept = 0, slope = 1), color = 'black',linetype = 'solid', linewidth = 1.25),
+                    layout_matrix = matrix(c(1, 2, 
+                                             3, 4), byrow=TRUE, nrow=2)
+              )
+      
+      ggsave(plot = E_grob, filename = sprintf('%s/%s/CIlength_assembled.png', overall_save_folder, setting_name), height = 7, width = 8, dpi = 300)
+      ggsave(plot = E_grob, filename = sprintf('%s/%s/CIlength_assembled.pdf', overall_save_folder, setting_name), height = 7, width = 8)
+      
+      
+      rm(p1, p2, p3, p4, E_grob)
       
     } else { # use specified settings
       plot_CIlength(plot_df = df_summ, 
@@ -382,6 +437,42 @@ if(CREATE_PLOTS_OVERALL) {
 
 
 
+
+
+
+# # arranging plots together
+# test_df = penguins |> filter(species %in% c('Adelie', 'Gentoo') & island %in% c('Torgersen', 'Biscoe'))
+# 
+# head(test_df)
+# 
+# 
+# ggplot(test_df |> filter(), 
+#        aes(x = bill_len, y = bill_dep)) +
+#   geom_point() + 
+#   facet_grid(cols = vars(species), rows = vars(island))
+# 
+# 
+# 
+# p1 = ggplot(test_df, 
+#             aes(x = bill_len, y = bill_dep)) +
+#   geom_point() + 
+#   facet_grid(cols = vars(species), rows = vars(island))
+# p2 = ggplot(test_df, 
+#             aes(x = bill_len, y = bill_dep)) +
+#   geom_point() + 
+#   facet_grid(cols = vars(species), rows = vars(island))
+# 
+# p3 = ggplot(test_df, 
+#             aes(x = bill_len, y = bill_dep)) +
+#   geom_point() + 
+#   facet_grid(cols = vars(species), rows = vars(island))
+# p4 = ggplot(test_df, 
+#             aes(x = bill_len, y = bill_dep)) +
+#   geom_point() + 
+#   facet_grid(cols = vars(species), rows = vars(island))
+# 
+# 
+# gridExtra::arrange.grid()
 
 
 

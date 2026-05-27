@@ -1203,7 +1203,7 @@ h_plot_miscoverage <- function(plot_df, ranks, ALPHA, save_folder, height=NULL, 
       geom_vline(aes(xintercept = ALPHA), color = '#DB1A1A', linewidth = .7, alpha = .6) + 
       scale_fill_discrete(palette = methodrank_colors[names(methodrank_colors) %in% plot_df_summ$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type), scales = 'fixed') +
-      labs(title = 'EBCI Miscoverage Rate', x = 'Method', y = 'Miscoverage Rate') +
+      labs(title = 'EBCI Miscoverage Rate', y = 'Method', x = 'Miscoverage Rate') +
       scale_y_continuous(expand = expansion(mult = c(0, .05))) +
       scale_y_discrete(limits = rev) +
       theme(# axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5), 
@@ -1320,7 +1320,7 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder, width=10, height=5, sav
                 geom_abline(aes(slope = 1, intercept = 0)) +
                 geom_qq(distribution = stats::qunif, geom = point_or_line, alpha = .8, linewidth = .8) +
                 coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-                labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+                labs(title = 'QQ-plot of Inverted EBCI p-values vs Unif(0,1)', color = 'Method') + 
                 scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
                 facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
                 theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
@@ -1371,7 +1371,7 @@ h_plot_ebcipval <- function(plot_df, ranks, save_folder, width=10, height=5, sav
       geom_abline(aes(slope = 1, intercept = 0)) +
       geom_qq(distribution = stats::qunif, geom = point_or_line, alpha = .8, linewidth = .8) +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      labs(title = 'QQ-plot of Fisher Combined Inverted EBCI p-values vs Unif(0,1)') + 
+      labs(title = 'QQ-plot of Fisher Combined Inverted EBCI p-values vs Unif(0,1)', color = 'Method') + 
       scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))

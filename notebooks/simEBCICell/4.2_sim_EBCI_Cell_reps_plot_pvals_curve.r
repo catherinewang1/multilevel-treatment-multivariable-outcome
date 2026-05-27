@@ -96,7 +96,9 @@ if(RUN_PVAL_CURVE) {
       group_by(sim_distn, split_type, method, rank, isTheta0Named, theoretical) |> 
       summarize(avg_ebci_pval_curve = mean(ebci_pvals), .groups = 'drop') |>
       mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))) 
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+             # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+             ) 
     
     temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
     temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
@@ -111,13 +113,16 @@ if(RUN_PVAL_CURVE) {
       geom_abline(aes(slope = 1, intercept = 0), color = 'black', linewidth = 1) +
       geom_line(alpha = .8, linewidth = .8, key_glyph = 'rect') +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)', 
+           y = 'sample', # averaged curve... but would be called sample in regular qqplot
+           color = 'Method') + 
       scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
     
     
     ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve.png', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height, dpi = 300)
     
     # subsampled version
     set.seed(12345)
@@ -127,13 +132,16 @@ if(RUN_PVAL_CURVE) {
       geom_abline(aes(slope = 1, intercept = 0), color = 'black', linewidth = 1) +
       geom_line(alpha = .8, linewidth = .8, key_glyph = 'rect') +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)',
+           y = 'sample', # averaged curve... but would be called sample in regular qqplot
+           color = 'Method') + 
       scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
     
     
     ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve_sampled.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve_sampled.png', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height, dpi = 300)
     
     
     

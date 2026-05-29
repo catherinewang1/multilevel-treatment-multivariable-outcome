@@ -61,16 +61,37 @@ if(RUN_PVAL_CURVE) {
       tryCatch(expr = {
         cur_rep = gsub(pattern = "\\D", replacement = "", x = cur_save_folder_rep ) |> as.numeric() # extract the numeric vals from path
         
-        df_one = readRDS(sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep)) |> 
+        # load in df with sim results including ebci pvals
+        df_one = readRDS(sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep)) 
+        
+        
+
+
+        # put unshrunk p-values as a separate category
+        # either need to find the original p-value by looking at original results.. or use the est + se
+        get_norm_pval <- function(est, se) {
+          # mapply(FUN = get_norm_pval, est = c(.0001, 1.6, 1.96, 1.96*2), se = c(1, 1, 1, 2))
+          2 * (1 - pnorm(abs(est) / se))
+        }
+        temp = df_one |> 
+                 dplyr::select(sim_distn, split_type, grna, gene, unshrunk_value, se, true_theta) |> 
+                 dplyr::distinct() |> 
+                 dplyr::mutate(method = 'unshrunk', rank = NA)
+        temp$ebci_pvals = mapply(FUN = get_norm_pval, est = temp$unshrunk_value, se = temp$se)
+        df_one = dplyr::bind_rows(df_one, temp)
+        
+        # add in more cols
+        df_one = df_one|> 
           mutate(rep = cur_rep) |> 
           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
           mutate(isTheta0 = (true_theta == 0),
                  isTheta0Named = sapply(FUN = function(b) {if(b){'Null'} else {'Alt'}}, X = isTheta0)) |> 
           group_by(rep, sim_distn, split_type, method, rank, isTheta0Named) |> 
           arrange(ebci_pvals) |>
-          mutate(theoretical = (1:n())/n())
+          mutate(theoretical = (1:n())/n()) |> 
+          ungroup()
         
-        
+        # bind together
         df = rbind(df, df_one)
       },  error = function(e) {
         print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
@@ -85,7 +106,7 @@ if(RUN_PVAL_CURVE) {
     
     methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
     methodrank_nicenames_order = c()
-    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined in utils file, right before the function methodrank_nicenames is defined)
       for(cur_rank in c(NA, ranks)) {
         methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
       }

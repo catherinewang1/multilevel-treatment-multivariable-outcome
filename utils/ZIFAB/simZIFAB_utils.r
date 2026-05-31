@@ -1,11 +1,30 @@
 # simulation for Zero-Inflated FAB p-values
-
-
-
-
+# 
+# 
+# 
+# Two-Groups Normal-Normal model:
 # \theta_i  
-#            = 0              wp     \pi_0 
-#         \sim N(\mu, \tau^2) wp 1 - \pi_0
+#            =       0              wp     \pi_0 
+#         \sim G_1 = N(\mu, \tau^2) wp 1 - \pi_0
+# 
+# We consider a few test statistics: 
+#  -     Likelihood Ratio (LR) with G 
+#  -     Likelihood Ratio (LR) with G1 in numerator only
+#  - log(Likelihood Ratio (LR) with G1 in numerator only)
+#  
+# this file structure:
+#  - simulate data
+#  - EM alg fns (estimate the prior's parameters: mu, tau, pi0)
+#  - Test stats + pval fns
+#  - (All-in-one fns) simulate and run to get p-values. and check EM alg
+
+
+
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+# ================ Simulate Data from Two-Groups model =======================================================
+# //////////////// - sim_values                                                     //////////////////////////
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 
 #' simulate N groups each of size G with variance s (singular val or vec)
@@ -60,8 +79,17 @@ sim_values <- function(N, G, s, mu, tau, pi0) {
 }
 
 
-
-
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+# ================ EM: Estimate Prior G Distribution =========================================================
+# //////////////// Estimate the prior distribution (for params \theta_i using EM)   //////////////////////////
+# //////////////// (main function)    - est_G_params                                //////////////////////////
+# //////////////// (helper functions) - est_G_params_Estep                          //////////////////////////
+# ////////////////                    - est_G_params_Mstep                          //////////////////////////
+# ////////////////                    - est_G_params_Mstep_tau2                     //////////////////////////
+# ////////////////                    - create_dQtau2                               //////////////////////////
+# ////////////////                    - create_d2Qtau2                              //////////////////////////
+# ////////////////                    - newtonraphson                               //////////////////////////
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 #' estimate the prior G's parameters using an EM algorithm
@@ -326,6 +354,23 @@ newtonraphson <- function(x0, f, fprime, NR_iterations) {
   return(df)
   
 }
+
+
+
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+# ================ T-statistics and P-values  ================================================================
+# //////////////// Calculate various Test statistics (as defined in overleaf/other) //////////////////////////
+# //////////////// -   calc_T_stat_G                                                //////////////////////////
+# //////////////// -   calc_T_stat_G1                                               //////////////////////////
+# //////////////// -   calc_T_stat_logG1                                            //////////////////////////
+# //////////////// -   calc_T_stat_posteriormean  (i think not used?)               //////////////////////////
+# //////////////// Calculate p-value                                                          ////////////////
+# //////////////// -   sample_tstat_null                                                      ////////////////
+# ////////////////         draw test statistics when under the null (helper fn for calc_pval) ////////////////
+# //////////////// -   calc_pval                                                              ////////////////
+# ////////////////         calc the p-value by drawing Y_j samples                            ////////////////
+# ////////////////         (or exact if possible for the p-val)                               ////////////////
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #' Calculate the test statistic:
 #' T_j = \int L(\theta_j) dP_G(\theta_j)
@@ -610,6 +655,16 @@ calc_pval <- function(tj, B, sj, thetaj0, mu, tau, pi0, T_stat_name) {
   
   return(pval)
 }
+
+
+
+
+
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////
+# ================ Main all-in-one Functions    ==========================================================
+# //////////////// - check_EM                   //////////////////////////////////////////////////////////
+# //////////////// - sim_and_plot               //////////////////////////////////////////////////////////
+# ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 #' check EM algorithm converges as sample size increases

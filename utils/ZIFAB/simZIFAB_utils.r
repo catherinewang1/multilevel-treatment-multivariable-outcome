@@ -802,7 +802,7 @@ check_EM <- function(save_folder,
 #' @param thetaj0 (numeric)
 #' @param B (integer)
 #' @param EM_iterations (integer) number of EM iteration steps
-sim_and_plot <- function(save_folder,
+sim_and_plot_old <- function(save_folder,
                          N, G, s, mu, tau, pi0,
                          thetaj0, B,
                          EM_iterations=100, 
@@ -1252,4 +1252,541 @@ sim_and_plot <- function(save_folder,
   
   
 }
+
+#' perform simulation and plot results under specified sim settings
+#' 2nd version now estimates the prior's parameters based on independent splits
+#' 
+#' 
+#' @param save_folder (character)
+#' @param N (integer)
+#' @param G (integer)
+#' @param s (numeric or numeric  vector)
+#' @param mu (numeric)
+#' @param tau (numeric)
+#' @param pi0 (numeric)
+#' @param thetaj0 (numeric)
+#' @param B (integer)
+#' @param EM_iterations (integer) number of EM iteration steps
+#' @param nsplits (integer) number of splits for prior G estimation (=#times EM performed): NA or NULL means none, and don't split 
+#'  (e.g. use the sample j when estimating the prior G's parameters used in the tstat computations)
+#' the more splits, the better the param est, but will take longer
+#' plots for EM will show the estimates' path for the last split (using all data not in last split)
+sim_and_plot <- function(save_folder,
+                         N, G, s, mu, tau, pi0,
+                         thetaj0, B,
+                         EM_iterations=100, 
+                         NR_iterations=20,
+                         nsplits=NULL) {
+  # # debug
+  # N=1000
+  # G=1
+  # s=5
+  # mu=3
+  # tau=1
+  # pi0=.3
+  # thetaj0=0
+  # B=1000
+  # EM_iterations=1000
+  
+  
+  dir.create(save_folder, showWarnings = TRUE)
+  
+
+
+  # ///////////////// SETUP: SIMULATE DATA AND CREATE SPLITS ////////////////////////////
+  sim_df = sim_values(N=N, G=G, s=s, mu=mu, tau=tau, pi0=pi0)
+  # (sim_df$theta == 0) |> mean()
+  
+  
+  
+  # create a dataframe indicating sample idx's split membership
+  if(is.na(nsplits) || is.null(nsplits)) {
+    split_membership = data.frame(idx = 1:N, split=1)
+    nsplits = 1
+  } else {
+    assertthat::assert_that((nsplits <= N) && (nsplits %% 1 == 0) , msg = 'bad nsplits input: must be integer less than N or NA or NULL')
+    split_membership = data.frame(idx = sample(1:N), split= rep.int(1:nsplits, times = ceiling(N/nsplits))[1:N]) |> dplyr::arrange(idx)
+  }
+  
+
+  
+  
+  # ///////////////// 1. ESTIMATE PRIOR ////////////////////////////
+  # create a dataframe indicating each -split's estimated params (estimated using samples not in this split)
+  split_G_params = data.frame(split  = 1:nsplits,
+                              estmu  = rep(NA, nsplits),
+                              esttau = rep(NA, nsplits),
+                              estpi0 = rep(NA, nsplits))
+  split_G_EM = NULL # we could save the EM estimate paths for all groups... would be a large df?
+  for(spl in 1:nsplits) {
+    not_spl_idx = split_membership |> dplyr::filter(split != spl) |> dplyr::pull(idx)
+
+    estparams = est_G_params(Y = sim_df[not_spl_idx , 'Y'], 
+                             S = sim_df[not_spl_idx , 's'], 
+                          EM_iterations=EM_iterations,
+                          NR_iterations=NR_iterations,
+                          initial_mu = 0,
+                          initial_tau = 1,
+                          initial_pi0 = .5)
+    split_G_params[spl, 'estmu']   = estparams[nrow(estparams),  'mu']
+    split_G_params[spl, 'esttau']  = estparams[nrow(estparams), 'tau']
+    split_G_params[spl, 'estpi0']  = estparams[nrow(estparams), 'pi0']
+
+    if(F) {
+      split_G_EM = rbind(split_G_EM, estparam_EM |> dplyr::mutate(split = spl), .before = 1)
+    }
+  }
+
+  # prev: no splitting, use whole dataset
+  # # estimate the prior, G, parameters
+  # estparams = est_G_params(Y = sim_df[ , 'Y'], 
+  #                          S = sim_df[ , 's'], 
+  #                          EM_iterations=EM_iterations,
+  #                          NR_iterations=NR_iterations,
+  #                          initial_mu = 0,
+  #                          initial_tau = 1,
+  #                          initial_pi0 = .5)
+  
+  # estmu  = estparams[nrow(estparams),  'mu']
+  # esttau = estparams[nrow(estparams), 'tau']
+  # estpi0 = estparams[nrow(estparams), 'pi0']
+  
+
+  # ///////////////// 2. and 3. CALCULATE TEST STATISTICS and PVALUES ////////////////////////////
+
+  # # move into loop, needs to change the EM estimates by split 
+  # # setup list of diff options 
+  # paramList = list('true' = list(thetaj0 = thetaj0,
+  #                                mu      = mu, 
+  #                                tau     = tau,
+  #                                pi0     = pi0),
+  #                  'EM'   = list(thetaj0 = thetaj0,
+  #                                mu      = estmu, 
+  #                                tau     = esttau,
+  #                                pi0     = estpi0))
+  
+  
+  tstatList = list('G'     = calc_T_stat_G, 
+                   'G1'    = calc_T_stat_G1,
+                   'logG1' = calc_T_stat_logG1) 
+  
+  
+  # start calc t-stats + pvals
+  
+  # Standard t-statistics + p-values (compare Y to N(0, s^2))
+  Tstat_standard =              sim_df[ ,'Y'] / sim_df[ ,'s']
+  p_standard     = 2*pnorm(-abs(sim_df[ ,'Y'] / sim_df[ ,'s']))
+  
+  simres_df = cbind(sim_df,
+                    data.frame(method = 'standard',
+                               tstat  = 'standard', 
+                               param  = 'NA',
+                               Tstat  = Tstat_standard,
+                               pval   = p_standard,
+                               idx    = 1:N,
+                               split  = split_membership[, 'split']))
+  # other methods
+  for(T_stat_name in c('G', 'G1', 'logG1')) { # for each t stat type
+    for(paramtype in c('true', 'EM')) {     # using either true or EM estimated parameters
+
+
+      for(spl in 1:nsplits) {
+        spl_idx = split_membership |> dplyr::filter(split == spl) |> dplyr::pull(idx)
+
+        # setup list of diff options
+        paramList = list('true' = list(thetaj0  = thetaj0,
+                                        mu      = mu, 
+                                        tau     = tau,
+                                        pi0     = pi0),
+                           'EM' = list(thetaj0  = thetaj0,
+                                        mu      = split_G_params[spl, 'estmu'], 
+                                        tau     = split_G_params[spl, 'esttau'],
+                                        pi0     = split_G_params[spl, 'estpi0']))
+        cur_Tstats =  mapply(FUN = tstatList[[T_stat_name]],
+                            Yj = sim_df[spl_idx ,'Y'],
+                            sj = sim_df[spl_idx , 's'], 
+                            MoreArgs = paramList[[paramtype]])
+        
+        cur_pvals  = mapply(FUN = calc_pval,
+                            tj = cur_Tstats,
+                            sj = sim_df[spl_idx , 's'], 
+                            MoreArgs = c(list(B          = B,
+                                              T_stat_name=T_stat_name),
+                                        paramList[[paramtype]]))
+        
+        simres_df = rbind(simres_df,
+                          cbind(sim_df,
+                                data.frame(method = sprintf('ZIFAB_%sG_T%s', paramtype, T_stat_name),
+                                          tstat  = T_stat_name, 
+                                          param  = paramtype,
+                                          Tstat  = cur_Tstats,
+                                          pval   = cur_pvals,
+                                          idx    = spl_idx,
+                                          split  = spl)))
+
+
+
+      }
+      
+
+      
+    }
+  }
+  
+  
+  
+  simres_df$method = factor(simres_df$method,
+                            levels = c('standard',     'ZIFAB_trueG_TG',    'ZIFAB_EMG_TG',    'ZIFAB_trueG_TG1',      'ZIFAB_EMG_TG1',     'ZIFAB_trueG_TlogG1',     'ZIFAB_EMG_TlogG1'),
+                            labels = c('standard', 'ZIFAB (true G) [G]','ZIFAB (EM G) [G]','ZIFAB (true G) [G1]',  'ZIFAB (EM G) [G1]', 'ZIFAB (true G) [logG1]', 'ZIFAB (EM G) [logG1]'))
+  
+  # # True parameters
+  # # calculate the T statistic using true parameters
+  # Tstat_trueparams = mapply(FUN = calc_T_stat_G,
+  #                           Yj = sim_df[ ,'Y'],
+  #                           sj = sim_df[ , 's'], 
+  #                           MoreArgs = list(thetaj0 = thetaj0,
+  #                                           mu      = mu, 
+  #                                           tau     = tau,
+  #                                           pi0     = pi0))
+  # 
+  # # estimate the p-values (using simulation) using true parameters
+  # phat_trueparams = mapply(FUN = calc_pval,
+  #                          tj = Tstat_trueparams,
+  #                          sj = sim_df[ , 's'], 
+  #                          MoreArgs = list(B       = B,
+  #                                          thetaj0 = thetaj0,
+  #                                          mu      = mu, 
+  #                                          tau     = tau,
+  #                                          pi0     = pi0,
+  #                                          T_stat_name='G'))
+  # 
+  # # calculate the T statistic w only G1 in the numerator using true parameters
+  # TstatG1_trueparams = mapply(FUN = calc_T_stat_G1,
+  #                             Yj = sim_df[ ,'Y'],
+  #                             sj = sim_df[ , 's'], 
+  #                             MoreArgs = list(thetaj0 = thetaj0,
+  #                                             mu      = mu, 
+  #                                             tau     = tau,
+  #                                             pi0     = pi0))
+  # 
+  # # estimate the p-values w only G1 in the numerator (using simulation) using true parameters
+  # phatG1_trueparams = mapply(FUN = calc_pval,
+  #                            tj = TstatG1_trueparams,
+  #                            sj = sim_df[ , 's'], 
+  #                            MoreArgs = list(B       = B,
+  #                                            thetaj0 = thetaj0,
+  #                                            mu      = mu, 
+  #                                            tau     = tau,
+  #                                            pi0     = pi0,
+  #                                            T_stat_name='G1'))
+  #  
+  # # Estimated (using EM alg) parameters
+  # # estimate the prior, G, parameters
+  # estparams = est_G_params(Y = sim_df[ , 'Y'], 
+  #                          S = sim_df[ , 's'], 
+  #                          EM_iterations=EM_iterations,
+  #                          initial_mu = 0,
+  #                          initial_tau = 1,
+  #                          initial_pi0 = .5)
+  # 
+  # estmu  = estparams[nrow(estparams),  'mu']
+  # esttau = estparams[nrow(estparams), 'tau']
+  # estpi0 = estparams[nrow(estparams), 'pi0']
+  # 
+  # 
+  # # calculate the T statistic using true parameters
+  # Tstat_estparams = mapply(FUN = calc_T_stat_G,
+  #                          Yj = sim_df[ ,'Y'],
+  #                          sj = sim_df[ , 's'], 
+  #                          MoreArgs = list(thetaj0 = thetaj0,
+  #                                          mu      = estmu, 
+  #                                          tau     = esttau,
+  #                                          pi0     = estpi0))
+  # 
+  # # estimate the p-values (using simulation) using true parameters
+  # phat_estparams = mapply(FUN = calc_pval,
+  #                         tj = Tstat_estparams,
+  #                         sj = sim_df[ , 's'], 
+  #                         MoreArgs = list(B       = B,
+  #                                         thetaj0 = thetaj0,
+  #                                         mu      = estmu, 
+  #                                         tau     = esttau,
+  #                                         pi0     = estpi0,
+  #                                         T_stat_name = 'G'))
+  # 
+  # # calculate the T statistic w only G1 in the numerator using est parameters
+  # TstatG1_estparams = mapply(FUN = calc_T_stat_G1,
+  #                             Yj = sim_df[ ,'Y'],
+  #                             sj = sim_df[ , 's'], 
+  #                             MoreArgs = list(thetaj0 = thetaj0,
+  #                                             mu      = estmu, 
+  #                                             tau     = esttau,
+  #                                             pi0     = estpi0))
+  # 
+  # # estimate the p-values w only G1 in the numerator (using simulation) using est parameters
+  # phatG1_estparams = mapply(FUN = calc_pval,
+  #                            tj = TstatG1_estparams,
+  #                            sj = sim_df[ , 's'], 
+  #                            MoreArgs = list(B       = B,
+  #                                            thetaj0 = thetaj0,
+  #                                            mu      = estmu, 
+  #                                            tau     = esttau,
+  #                                            pi0     = estpi0,
+  #                                            T_stat_name='G1'))
+  # 
+  # 
+  # 
+  # # combine to dataframe
+  # simres_df = rbind(cbind(sim_df,
+  #                         data.frame(method = 'standard',
+  #                                    Tstat  = Tstat_standard,
+  #                                    pval   = p_standard)),
+  #                   # ZIFAB true G
+  #                   cbind(sim_df,
+  #                         data.frame(method = 'ZIFAB_trueG_TG',
+  #                                    Tstat  = Tstat_trueparams,
+  #                                    pval   = phat_trueparams)),
+  #                   cbind(sim_df,
+  #                         data.frame(method = 'ZIFAB_trueG_TG1',
+  #                                    Tstat  = TstatG1_trueparams,
+  #                                    pval   = phatG1_trueparams)),
+  #                   # ZIFAB estimated G
+  #                   cbind(sim_df,
+  #                         data.frame(method = 'ZIFAB_EMG_TG',
+  #                                    Tstat  = Tstat_estparams,
+  #                                    pval   = phat_estparams)),
+  #                   cbind(sim_df,
+  #                         data.frame(method = 'ZIFAB_EMG_TG1',
+  #                                    Tstat  = TstatG1_estparams,
+  #                                    pval   = phatG1_estparams))
+  # )
+  # 
+  # 
+  # simres_df$method = factor(simres_df$method,
+  #                           levels = c('standard',     'ZIFAB_trueG_TG',    'ZIFAB_EMG_TG',    'ZIFAB_trueG_TG1',      'ZIFAB_EMG_TG1'),
+  #                           labels = c('standard', 'ZIFAB (true G) [G]','ZIFAB (EM G) [G]','ZIFAB (true G) [G1]',  'ZIFAB (EM G) [G1]'))
+  
+   # ///////////////// PLOT RESULTS ////////////////////////////
+  
+  # method_colors = c('blue', 'orange', 'brown')
+  set2_colors = RColorBrewer::brewer.pal(7, name = 'Set2')
+  
+  barplot( 1:length(set2_colors), col = set2_colors)
+  
+  
+  method_colors = c(set2_colors[2], 
+                    colorRampPalette(c('white', set2_colors[1]))(9)[c(4, 9)], 
+                    colorRampPalette(c('white', set2_colors[3]))(9)[c(4, 9)],
+                    colorRampPalette(c('white', set2_colors[4]))(9)[c(4, 9)])
+  barplot( 1:length(method_colors), col = method_colors)
+  
+  # test EM estimation performance (same parameters, change sample size)
+  
+  # Estimated (using EM alg) parameters
+  sim_df = sim_values(N=5000, G=G, s=sample(s, size = 5000, replace = TRUE), mu=mu, tau=tau, pi0=pi0)
+  Ns = c(25, 50, 100, 250, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000)
+  EM_est = NULL
+  for(n in Ns) {
+    t0 = Sys.time()
+    EMparams = est_G_params(Y = sim_df[1:n, 'Y'], 
+                            S = sim_df[1:n, 's'], 
+                            EM_iterations=EM_iterations,
+                            NR_iterations=NR_iterations,
+                            initial_mu = 0,
+                            initial_tau = 1,
+                            initial_pi0 = .5)
+    t1 = Sys.time()
+    EM_est = rbind(EM_est, 
+                   data.frame(n   = n,
+                              mu  = EMparams[nrow(EMparams),  'mu'],
+                              tau = EMparams[nrow(EMparams), 'tau'],
+                              pi0 = EMparams[nrow(EMparams), 'pi0'], 
+                              time = difftime(t1, t0, units = 'sec')))
+  }
+  
+  
+  # display EM parameter estimates over iterations
+  p_mu_samplesize  = ggplot() + geom_line(data=EM_est, aes(x = n, y =  mu)) + labs(title = 'mu')  + geom_hline(aes(yintercept =  mu), color = 'orange')
+  p_tau_samplesize = ggplot() + geom_line(data=EM_est, aes(x = n, y = tau)) + labs(title = 'tau') + geom_hline(aes(yintercept = tau), color = 'orange')
+  p_pi0_samplesize = ggplot() + geom_line(data=EM_est, aes(x = n, y = pi0)) + labs(title = 'pi0') + geom_hline(aes(yintercept = pi0), color = 'orange')
+  grob <- gridExtra::grid.arrange(p_mu_samplesize, p_tau_samplesize, p_pi0_samplesize)
+  ggsave(sprintf('%s/estparam_EM_bysamplesize.pdf', save_folder), grob, width = 4, height = 6)
+  
+  
+  
+  # Visualizations
+  
+  # display EM parameter estimates over iterations
+  p_mu  = ggplot() + geom_line(data=estparams, aes(x = step, y =  mu)) + labs(title = 'mu')  + geom_hline(aes(yintercept =  mu), color = 'orange')
+  p_tau = ggplot() + geom_line(data=estparams, aes(x = step, y = tau)) + labs(title = 'tau') + geom_hline(aes(yintercept = tau), color = 'orange')
+  p_pi0 = ggplot() + geom_line(data=estparams, aes(x = step, y = pi0)) + labs(title = 'pi0') + geom_hline(aes(yintercept = pi0), color = 'orange')
+  grob <- gridExtra::grid.arrange(p_mu, p_tau, p_pi0)
+  ggsave(sprintf('%s/estparam_EM_byiterations.pdf', save_folder), grob, width = 4, height = 6)
+  
+  
+  
+  
+  p_EM_label_samplesize = ggplot() + geom_text(aes(x=0,y=0, label = 'EM Estimates \n by sample size'       ), size = 8) + theme_nothing()
+  p_EM_label_iteration  = ggplot() + geom_text(aes(x=0,y=0, label = 'EM Estimates \n by EM iteration steps'), size = 8) + theme_nothing()
+  
+  
+  # EDA
+  
+  # Prior: Histogram of theta
+  p1 = ggplot(sim_df, aes(x = theta)) +
+    geom_histogram(binwidth = .5) +
+    scale_x_continuous(limits = c(-5, 6)) +
+    labs(title = 'Histogram of Theta')
+  p1 
+  ggsave(filename = sprintf('%s/theta_hist.pdf', save_folder), height = 4, width = 4)
+  
+  
+  # Posterior: Histogram of Y
+  p2 = ggplot(sim_df, aes(x = Y)) +
+    geom_histogram(binwidth = .5) +
+    scale_x_continuous(limits = c(-5, 6)) +
+    labs(title = 'Histogram of Y')
+  p2
+  ggsave(filename = sprintf('%s/Y_hist.pdf', save_folder), height = 4, width = 4)
+  
+  
+  # Results
+  
+  
+  # Points: Test Statistic vs true Theta
+  p3 = ggplot(simres_df |> dplyr::filter(method != 'standard'), aes(x = theta, y = Tstat, group = method, color = method)) +
+    geom_point(alpha = .7, size = .6) +
+    scale_y_log10() +
+    # scale_x_continuous(limits = c(-4, 4)) +
+    scale_color_manual(values = method_colors[-1]) +
+    labs(title = 'Test Statistic vs Theta',
+         x ='Theta', y = 'Test Statistic (log scale)')
+  p3
+  ggsave(filename = sprintf('%s/tstat_theta_pts.pdf', save_folder), height = 4, width = 6)
+  
+  
+  
+  
+  # Points: Test Statistic vs Y
+  p4 = ggplot(simres_df |> dplyr::filter(method != 'standard'), 
+              aes(x = Y, y = Tstat, group = method, color = method)) +
+    geom_point(alpha = .7, size = 1) +
+    scale_y_log10() +
+    # scale_x_continuous(limits = c(-4, 4)) +
+    scale_color_manual(values = method_colors[-1]) +
+    labs(title = 'Test Statistic vs Y',
+         x ='Y', y = 'Test Statistic (log scale)')
+  p4
+  ggsave(filename = sprintf('%s/tstat_Y_pts.pdf', save_folder), height = 4, width = 6)
+  
+  
+  
+  # Points: Estimated p-value vs true Theta
+  p5 = ggplot(simres_df, aes(x = theta, y = pval, group = method, color = method)) +
+    geom_point(alpha = .7, size = 1) +
+    scale_color_manual(values = method_colors) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    labs(title = 'p-value vs Theta',
+         x ='Theta', y = 'p-value')
+  p5
+  ggsave(filename = sprintf('%s/pval_theta_pts.pdf', save_folder), height = 4, width = 6)
+  
+  
+  # Points: Estimated p-value vs Y
+  p6 = ggplot(simres_df, 
+              aes(x = Y, y = pval, group = method, color = method)) +
+    geom_point(alpha = .7, size = 1) +
+    scale_color_manual(values = method_colors) +
+    scale_x_continuous(limits = c(-4, 4)) +
+    labs(title = 'p-value vs Y',
+         x ='Y', y = 'p-value')
+  p6
+  ggsave(filename = sprintf('%s/pval_Y_pts.pdf', save_folder), height = 4, width = 6)
+  
+  
+  
+  # For theta=0, histogram of pvals
+  p7 = ggplot(simres_df |> dplyr::filter(theta == 0),
+              aes(x = pval, group = method, fill = method)) +
+    geom_histogram(breaks = seq(from = -.1, to = 1.1, by = .05), position = 'dodge') +
+    scale_fill_manual(values = method_colors) +
+    scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    labs(title = 'Histogram of p-values',
+         subtitle = '(when Theta=0)',
+         x = 'p-value')
+  p7
+  ggsave(filename = sprintf('%s/pval_hist_0.pdf', save_folder), height = 4, width = 6)
+  
+  # For theta!=0, histogram of pvals
+  p8 = ggplot(simres_df |> dplyr::filter(theta != 0),
+              aes(x = pval, group = method, fill = method)) +
+    geom_histogram(breaks = seq(from = -.1, to = 1.1, by = .05), position = 'dodge') +
+    scale_fill_manual(values = method_colors) +
+    scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    labs(title = 'Histogram of p-values',
+         subtitle = '(when Theta!=0)',
+         x = 'p-value')
+  p8
+  ggsave(filename = sprintf('%s/pval_hist_not0.pdf', save_folder), height = 4, width = 6)
+  
+  
+  
+  # For theta=0, qqplot of phat
+  p9 = ggplot(simres_df |> dplyr::filter(theta == 0) |> 
+                dplyr::group_by(method) |>
+                dplyr::arrange(pval) |> 
+                dplyr::mutate(rej_rate = (1:dplyr::n())/dplyr::n()),
+              aes(x = pval, y = rej_rate, group = method, color = method)) +
+    geom_abline(aes(slope = 1, intercept = 0)) +
+    geom_point(alpha = .9, size = .6) +
+    # scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    scale_color_manual(values = method_colors) +
+    labs(title = 'Rejection Rate by p-value (qqplot)',
+         subtitle = '(when Theta=0)',
+         x = 'p-value', y = 'Rejection Rate')
+  p9
+  ggsave(filename = sprintf('%s/pval_qqplot_0.pdf', save_folder), height = 4, width = 6)
+  
+  
+  # For theta!=0, qqplot of phat
+  p10 = ggplot(simres_df |> dplyr::filter(theta != 0) |> 
+                 dplyr::group_by(method) |>
+                 dplyr::arrange(pval) |> 
+                 dplyr::mutate(rej_rate = (1:dplyr::n())/dplyr::n()),
+               aes(x = pval, y = rej_rate, group = method, color = method)) +
+    geom_abline(aes(slope = 1, intercept = 0)) +
+    geom_point(alpha = .9, size = .6) +
+    # scale_x_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    scale_color_manual(values = method_colors) +
+    labs(title = 'Rejection Rate by p-value (qqplot)',
+         subtitle = '(when Theta!=0)',
+         x = 'p-value', y = 'Rejection Rate')
+  p10
+  ggsave(filename = sprintf('%s/pval_qqplot_not0.pdf', save_folder), height = 4, width = 6)
+  
+  
+  
+  
+  grob <- gridExtra::arrangeGrob(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                                 p_mu, p_tau, p_pi0,
+                                 p_mu_samplesize, p_tau_samplesize, p_pi0_samplesize, # 14, 15, 16
+                                 p_EM_label_samplesize, p_EM_label_iteration, # 17, 18
+                                 # ncol = 2, 
+                                 layout_matrix = matrix(c(17, 14, 15, 16,
+                                                          18, 11, 12, 13,
+                                                          1, 2, NA, NA,
+                                                          3, 4, 5, 6,
+                                                          7, 8, 9, 10), byrow = TRUE, nrow = 5))
+  ggsave(sprintf('%s/all.pdf', save_folder), grob, width = 24, height = 18)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+}
+
 

@@ -26,7 +26,8 @@ ggplot2::set_theme(theme_bw())
 library(PMA)
 library(softImpute)
 
-source('./matrixPrior_utils.R') # util functions for running the simulation
+source('../../utils/matrixPrior_utils.R') # util functions for running the simulation
+source('../../utils/matrix_approx_fns.r') # create_matrix_completion_softImpute(...) function
 
 
 save_folder = "C:/Users/Cathe/Documents/School/Genetic Hypothesis Testing using Negative Controls/multilevel-treatment-multivariable-outcome-github/multilevel-treatment-multivariable-outcome/plots/matrixPrior/sim/"
@@ -185,7 +186,8 @@ gridExtra::grid.arrange(grob)
 #| label: matrixpriorsimA
 #| output: false
 #| warning: false
-
+#| fig.height: 12
+#| fig.width: 15
 {
 # A: Easy case- large signal, small noise
 r = 5
@@ -279,6 +281,8 @@ gridExtra::grid.arrange(grobB_nosamplesplit)
 #| label: matrixpriorsimC
 #| output: false
 #| warning: false
+#| fig.width: 15
+#| fig.height: 12 
 
 {
 # C: Hard case- ----- signal, large noise
@@ -295,6 +299,9 @@ grobC = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
 
 grobC_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
                                                  save_folder=sprintf('%s/C/', save_folder))
+
+ggsave(sprintf('%s/all_nosamplesplit.png', sprintf('%s/C/', save_folder)), grobC, width = 15, height = 12, dpi = 300)
+
 
 }
 ```
@@ -463,11 +470,61 @@ gridExtra::grid.arrange(grobF_nosamplesplit)
 
 
 
+### Setting G: 
+
+```{r}
+#| label: matrixpriorsimG
+#| output: false
+#| warning: false
+#| fig.width: 15
+#| fig.height: 12 
+
+{
+# G:
+r = 3
+n = 100
+m = 50
+set.seed(12345)
+M        = create_blocky_matrix(r=r, n=n, m=m)**5  # the signal
+
+
+threshold_value <- function(x, minx = 5, maxx = 10) {
+  if(x == 0) { x }
+  # else {
+  #   sign(x) * max(min(x, maxx), minx)
+  # }
+  else {
+    sign(x) * maxx
+  }
+}
+
+M = apply(M,1:2,threshold_value)
+
+noise_sd = runif(n*m, min=3, max=8)*5            # sd of the noise
+
+
+# grobC = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd, svd_maxrank=r,
+#                      save_folder=sprintf('%s/G/', save_folder))
+# 
+# grobC_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd/sqrt(2), svd_maxrank=r,
+#                                                  save_folder=sprintf('%s/G/', save_folder))
+
+
+for(noise_mult in c(.1, .25, .5, .75, 1, 1.25, 1.5)) {
+  grobG = sim_and_plot_samplesplit(M=M, noise_sd=noise_sd*noise_mult, svd_maxrank=r,
+                       save_folder=sprintf('%s/G/%1.2f', save_folder, noise_mult))
+  grobC_nosamplesplit = sim_and_plot_nosamplesplit(M=M, noise_sd=noise_sd*noise_mult, svd_maxrank=r,
+                      save_folder=sprintf('%s/G/%1.2f', save_folder, noise_mult))
+}
+
+}
+```
+
 
 ## Many Runs
 
 
-How do we `average' across multiple runs?
+How do we `average' across multiple runs? Average the qq-plot curves.
 
 eg. suppose we have a vector of pvals from multiple runs: pval1, pval2, ..., pvalK. 
 

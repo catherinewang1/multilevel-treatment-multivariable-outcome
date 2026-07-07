@@ -497,7 +497,8 @@ sim_and_plot_nosamplesplit <- function(M, noise_sd, svd_maxrank, save_folder, re
   
   
   gridExtra::grid.arrange(grob)
-  ggsave(sprintf('%s/all_nosamplesplit.pdf', save_folder), grob, width = 18, height = 12)
+  ggsave(sprintf('%s/all_nosamplesplit.pdf', save_folder), grob, width = 15, height = 12)
+  ggsave(sprintf('%s/all_nosamplesplit.png', save_folder), grob, width = 15, height = 12, dpi = 300)
   
   if(!return_pvals) { # do not return pvals, only return the plots 
     return(grob)
@@ -699,6 +700,7 @@ sim_and_plot_samplesplit <- function(M, noise_sd, svd_maxrank, save_folder, retu
                                                           13, 13, 14, 14, NA), byrow = TRUE, nrow = 5))
   gridExtra::grid.arrange(grob)
   ggsave(sprintf('%s/all_samplesplit.pdf', save_folder), grob, width = 15, height = 12)
+  ggsave(sprintf('%s/all_samplesplit.png', save_folder), grob, width = 15, height = 12, dpi = 300)
   
   if(!return_pvals) { # do not return pvals, only return the plots 
     return(grob)

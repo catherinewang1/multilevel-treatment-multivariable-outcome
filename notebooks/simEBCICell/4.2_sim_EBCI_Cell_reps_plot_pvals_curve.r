@@ -2,16 +2,13 @@
 # saved objects from running the notebooks/simEBCICell/sim_EBCI_Cell_reps_script.R
 # 
 # Run in order:
-# -        sim_EBCI_Cell_reps_script.R          (actual simulation runs)
-# -        sim_EBCI_Cell_reps_ebcipval_script.R (using saved sim results, find the inverted ebcipvals)
+# -        1_sim_EBCI_Cell_reps_script.R              (run simulation: sim data, estimate, and shrink)
+# -        2_sim_EBCI_Cell_reps_ebcipval_script.R     (using saved sim results, calculate the inverted EBCI pvals)
+# -        3_sim_EBCI_Cell_reps_summary_df.R          (from the large saves, make a summary df)
 #  --- [only required to run up to here] ---
-# -        sim_EBCI_Cell_reps_summary_df.R      (from the large saves, make a summary df)
-# -        sim_EBCI_Cell_reps_plot_script.R     (making some plots)
-# - (THIS) 7.X_sim_EBCI_Cell_reps_pvals_curve.r (combine and make pval plots by averaging curve)
-#
-#
-# 
-
+# -        4.1_sim_EBCI_Cell_reps_plot_script.R       (plot MSE, Miscoverage, and pval (one and fishers) plots)
+# - (THIS) 4.2_sim_EBCI_Cell_reps_plot_pvals_curve.r  (plot average pval curve qq plot)
+# -        4.3_sim_EBCI_Cell_reps_plot_CIlength.r     (plot CI length plot)
 
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(ggplot2))
@@ -64,16 +61,37 @@ if(RUN_PVAL_CURVE) {
       tryCatch(expr = {
         cur_rep = gsub(pattern = "\\D", replacement = "", x = cur_save_folder_rep ) |> as.numeric() # extract the numeric vals from path
         
-        df_one = readRDS(sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep)) |> 
+        # load in df with sim results including ebci pvals
+        df_one = readRDS(sprintf('%s/sim_result_ebci_pvals_df.rds', cur_save_folder_rep)) 
+        
+        
+
+
+        # put unshrunk p-values as a separate category
+        # either need to find the original p-value by looking at original results.. or use the est + se
+        get_norm_pval <- function(est, se) {
+          # mapply(FUN = get_norm_pval, est = c(.0001, 1.6, 1.96, 1.96*2), se = c(1, 1, 1, 2))
+          2 * (1 - pnorm(abs(est) / se))
+        }
+        temp = df_one |> 
+                 dplyr::select(sim_distn, split_type, grna, gene, unshrunk_value, se, true_theta) |> 
+                 dplyr::distinct() |> 
+                 dplyr::mutate(method = 'unshrunk', rank = NA)
+        temp$ebci_pvals = mapply(FUN = get_norm_pval, est = temp$unshrunk_value, se = temp$se)
+        df_one = dplyr::bind_rows(df_one, temp)
+        
+        # add in more cols
+        df_one = df_one|> 
           mutate(rep = cur_rep) |> 
           filter(method != 'matcomp_linearreg') |> # exclude this... this performs badly
           mutate(isTheta0 = (true_theta == 0),
                  isTheta0Named = sapply(FUN = function(b) {if(b){'Null'} else {'Alt'}}, X = isTheta0)) |> 
           group_by(rep, sim_distn, split_type, method, rank, isTheta0Named) |> 
           arrange(ebci_pvals) |>
-          mutate(theoretical = (1:n())/n())
+          mutate(theoretical = (1:n())/n()) |> 
+          ungroup()
         
-        
+        # bind together
         df = rbind(df, df_one)
       },  error = function(e) {
         print(sprintf('    ------ Errored at: %s', cur_save_folder_rep))
@@ -88,7 +106,7 @@ if(RUN_PVAL_CURVE) {
     
     methodrank_colors = create_color_pallete_nicenames(ranks = ranks)
     methodrank_nicenames_order = c()
-    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined later in this file, right before the function methodrank_nicenames is defined)
+    for(cur_method in names(method_nicenames)) { # requires declaration of this list/vector (this is defined in utils file, right before the function methodrank_nicenames is defined)
       for(cur_rank in c(NA, ranks)) {
         methodrank_nicenames_order = c(methodrank_nicenames_order, methodrank_nicenames(method_name = cur_method, rank_ = cur_rank) |> unname())
       }
@@ -99,7 +117,9 @@ if(RUN_PVAL_CURVE) {
       group_by(sim_distn, split_type, method, rank, isTheta0Named, theoretical) |> 
       summarize(avg_ebci_pval_curve = mean(ebci_pvals), .groups = 'drop') |>
       mutate(sim_distn  = factor(sim_distn,  levels = c('pois', 'nb'),                   labels = c('Poisson', 'Negative Binomial')),
-             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))) 
+             split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('No Sample Split', 'Sample Split'))
+             # split_type = factor(split_type, levels = c('nosamplesplit', 'samplesplit'), labels = c('Full Dataset', 'Sample Split'))
+             ) 
     
     temp_df$methodrank = mapply(FUN = methodrank_nicenames, method_name =  temp_df$method, rank_ = temp_df$rank) |> unname()
     temp_df$methodrank = factor(temp_df$methodrank, levels = methodrank_nicenames_order)
@@ -114,13 +134,16 @@ if(RUN_PVAL_CURVE) {
       geom_abline(aes(slope = 1, intercept = 0), color = 'black', linewidth = 1) +
       geom_line(alpha = .8, linewidth = .8, key_glyph = 'rect') +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)', 
+           y = 'sample', # averaged curve... but would be called sample in regular qqplot
+           color = 'Method') + 
       scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
     
     
     ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve.png', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height, dpi = 300)
     
     # subsampled version
     set.seed(12345)
@@ -130,13 +153,16 @@ if(RUN_PVAL_CURVE) {
       geom_abline(aes(slope = 1, intercept = 0), color = 'black', linewidth = 1) +
       geom_line(alpha = .8, linewidth = .8, key_glyph = 'rect') +
       coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
-      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)') + 
+      labs(title = 'Averaged QQ-plot of Inverted EBCI p-values vs Unif(0,1)',
+           y = 'sample', # averaged curve... but would be called sample in regular qqplot
+           color = 'Method') + 
       scale_color_discrete(palette = methodrank_colors[names(methodrank_colors) %in% temp_df$methodrank]) +
       facet_grid(rows = vars(sim_distn), cols = vars(split_type, isTheta0Named), scales = "fixed") +
       theme(panel.grid.major.x = element_blank(), strip.background = element_rect(fill = NA))
     
     
     ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve_sampled.pdf', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height)
+    ggsave(filename = sprintf('%s/ebci_pvals_avgqqcurve_sampled.png', sprintf('%s%s/', overall_save_folder, setting_name)), width = width, height = height, dpi = 300)
     
     
     

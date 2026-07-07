@@ -2,10 +2,13 @@
 # saved objects from running the notebooks/simEBCICell/sim_EBCI_Cell_reps_script.R
 # 
 # Run in order:
-# -        sim_EBCI_Cell_reps_script.R          (actual simulation runs)
-# -        sim_EBCI_Cell_reps_ebcipval_script.R (using saved sim results, find the inverted ebcipvals)
-# -        sim_EBCI_Cell_reps_summary_df.R      (from the large saves, make a summary df)
-# - (THIS) sim_EBCI_Cell_reps_plot_script.R     (making some plots)
+# -        1_sim_EBCI_Cell_reps_script.R              (run simulation: sim data, estimate, and shrink)
+# -        2_sim_EBCI_Cell_reps_ebcipval_script.R     (using saved sim results, calculate the inverted EBCI pvals)
+# -        3_sim_EBCI_Cell_reps_summary_df.R          (from the large saves, make a summary df)
+#  --- [required to run up to here] ---
+# - (THIS) 4.1_sim_EBCI_Cell_reps_plot_script.R       (plot MSE, Miscoverage, and pval (one and fishers) plots)
+# -        4.2_sim_EBCI_Cell_reps_plot_pvals_curve.r  (plot average pval curve qq plot)
+# -        4.3_sim_EBCI_Cell_reps_plot_CIlength.r     (plot CI length plot)
 
 suppressPackageStartupMessages(library(RColorBrewer))
 suppressPackageStartupMessages(library(latex2exp))
@@ -16,9 +19,9 @@ source('../../utils/simEBCICell_utils.R')
 
 
 overall_save_folder = '../../plots/simEBCICell/'
-# setting_names = c('A', 'E')
+setting_names = c('A', 'E')
 # setting_names = c('A')
-setting_names = c('E')
+# setting_names = c('E')
 
 
 CREATE_PLOTS_INDIVIDUAL      = TRUE # create these plots or not
@@ -92,7 +95,13 @@ if(CREATE_PLOTS_OVERALL) {
     
     if(SAMPLE_N) {
       set.seed(1234)
-      summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(5000) # E: 25000 max (grna-gene pairs)
+      # choose subset of grna gene
+      chosen_grna_gene = summary_df |> select(gene, grna) |> distinct()
+      chosen_grna_gene = chosen_grna_gene |> dplyr::slice_sample(n = min(nrow(chosen_grna_gene), 5000)) 
+      
+      summary_df_sampled = merge(chosen_grna_gene, summary_df, by = c('grna', 'gene'))
+      # this does not work when fewer then chosen # to sample
+      # summary_df_sampled = summary_df |> group_by(sim_distn, split_type, method, rank) |> sample_n(5000) # E: 25000 max (grna-gene pairs)
     } else {
       summary_df_sampled = summary_df
     } 
